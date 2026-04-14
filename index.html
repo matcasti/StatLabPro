@@ -1,0 +1,2211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StatLab Pro — Statistical Analysis Suite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root {
+  --navy: #0D1B2A;
+  --navy-mid: #152536;
+  --navy-light: #1E3448;
+  --gold: #C8903E;
+  --gold-light: #E8A847;
+  --blue: #4A7FA8;
+  --blue-light: #6B9CBD;
+  --paper: #F7F6F2;
+  --paper-dark: #EFEDE7;
+  --card: #FFFFFF;
+  --text: #1A1D23;
+  --text-muted: #6B7280;
+  --text-light: #9CA3AF;
+  --border: #E8E6E1;
+  --border-dark: #D5D2CC;
+  --success: #22C55E;
+  --danger: #EF4444;
+  --warning: #F59E0B;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:'Outfit',sans-serif;background:var(--paper);color:var(--text);}
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#D1CFC9;border-radius:3px;}
+::-webkit-scrollbar-thumb:hover{background:#B5B2AC;}
+
+.sidebar{background:var(--navy);width:216px;min-width:216px;height:100vh;display:flex;flex-direction:column;position:relative;}
+.sidebar::after{content:'';position:absolute;right:0;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.06);}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 14px;color:rgba(255,255,255,0.5);cursor:pointer;transition:all 0.15s;border-radius:7px;margin:1px 8px;font-size:13px;font-weight:500;letter-spacing:-0.01em;}
+.nav-item:hover{color:rgba(255,255,255,0.88);background:rgba(255,255,255,0.07);}
+.nav-item.active{color:#fff;background:rgba(200,144,62,0.18);border-left:2.5px solid var(--gold);}
+.nav-item .icon{width:20px;text-align:center;font-size:13px;flex-shrink:0;}
+
+.module-header{padding:18px 24px 14px;border-bottom:1px solid var(--border);background:var(--card);}
+.module-title{font-family:'Crimson Pro',serif;font-size:22px;font-weight:600;color:var(--text);letter-spacing:-0.02em;line-height:1.2;}
+.module-subtitle{font-size:12px;color:var(--text-muted);margin-top:2px;}
+
+.data-grid{font-family:'JetBrains Mono',monospace;font-size:12px;border-collapse:collapse;width:100%;}
+.data-grid thead th{background:var(--navy);color:rgba(255,255,255,0.9);padding:9px 12px;text-align:left;font-family:'Outfit',sans-serif;font-weight:500;font-size:11px;white-space:nowrap;position:sticky;top:0;z-index:10;cursor:pointer;user-select:none;transition:background 0.1s;}
+.data-grid thead th:hover{background:var(--navy-mid);}
+.data-grid tbody tr:nth-child(even) td{background:rgba(0,0,0,0.013);}
+.data-grid tbody tr:hover td{background:rgba(74,127,168,0.05)!important;}
+.data-grid tbody td{padding:5px 12px;border-bottom:1px solid var(--border);white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis;}
+
+.result-table{width:100%;border-collapse:collapse;}
+.result-table th{background:var(--paper-dark);padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;border-bottom:2px solid var(--border);}
+.result-table td{padding:7px 12px;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:12px;}
+.result-table tr:last-child td{border-bottom:none;}
+.result-table tr:hover td{background:rgba(74,127,168,0.03);}
+
+.btn{border:none;cursor:pointer;font-family:'Outfit',sans-serif;font-weight:500;transition:all 0.15s;display:inline-flex;align-items:center;gap:6px;}
+.btn-primary{background:var(--navy);color:#fff;padding:8px 16px;border-radius:7px;font-size:13px;}
+.btn-primary:hover{background:var(--navy-light);}
+.btn-primary:disabled{opacity:0.5;cursor:not-allowed;}
+.btn-secondary{background:transparent;color:var(--text);padding:7px 14px;border-radius:7px;font-size:13px;border:1px solid var(--border);}
+.btn-secondary:hover{background:var(--paper);}
+.btn-gold{background:var(--gold);color:#fff;padding:8px 16px;border-radius:7px;font-size:13px;}
+.btn-gold:hover{background:var(--gold-light);}
+.btn-gold:disabled{opacity:0.5;cursor:not-allowed;}
+.btn-sm{padding:5px 11px;font-size:12px;}
+.btn-xs{padding:3px 8px;font-size:11px;}
+
+.input-field{border:1px solid var(--border);border-radius:7px;padding:7px 11px;font-size:13px;font-family:'Outfit',sans-serif;background:white;color:var(--text);outline:none;transition:border-color 0.15s,box-shadow 0.15s;}
+.input-field:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(74,127,168,0.1);}
+.select-field{border:1px solid var(--border);border-radius:7px;padding:7px 11px;font-size:13px;font-family:'Outfit',sans-serif;background:white;color:var(--text);outline:none;cursor:pointer;appearance:auto;}
+.select-field:focus{border-color:var(--blue);}
+
+.tab-btn{padding:6px 14px;font-size:13px;font-weight:500;cursor:pointer;border-radius:6px;transition:all 0.15s;border:none;background:transparent;color:var(--text-muted);font-family:'Outfit',sans-serif;}
+.tab-btn.active{background:var(--navy);color:white;}
+.tab-btn:hover:not(.active){background:var(--paper-dark);color:var(--text);}
+
+.stat-card{background:white;border:1px solid var(--border);border-radius:9px;padding:14px;transition:box-shadow 0.15s;}
+.stat-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.06);}
+
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:100px;font-size:11px;font-weight:600;line-height:1.5;}
+.pill-blue{background:#EFF6FF;color:#1D4ED8;}
+.pill-amber{background:#FFF7ED;color:#C2410C;}
+.pill-green{background:#F0FDF4;color:#15803D;}
+.pill-red{background:#FEF2F2;color:#B91C1C;}
+.pill-gray{background:#F3F4F6;color:#4B5563;}
+
+.p1{background:#FEE2E2;color:#991B1B;}
+.p5{background:#FEF3C7;color:#92400E;}
+.p10{background:#FFF7ED;color:#9A3412;}
+.pns{background:#F3F4F6;color:#6B7280;}
+
+.drop-zone{border:2px dashed var(--border);border-radius:12px;padding:40px;text-align:center;transition:all 0.2s;cursor:pointer;background:white;}
+.drop-zone:hover,.drop-zone.drag{border-color:var(--blue);background:rgba(74,127,168,0.03);}
+
+.fade-in{animation:fadeIn 0.22s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;text-align:center;}
+
+.section-head{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.07em;padding:10px 14px 4px;}
+
+.tooltip-wrap{position:relative;}
+.tooltip-wrap:hover .tooltip-box{display:block;}
+.tooltip-box{display:none;position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:var(--navy);color:white;font-size:11px;padding:5px 10px;border-radius:5px;white-space:nowrap;z-index:200;pointer-events:none;}
+
+.check-row{display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;font-size:12px;}
+.check-row input[type=checkbox]{accent-color:var(--navy);width:14px;height:14px;flex-shrink:0;}
+
+.side-panel{width:256px;border-right:1px solid var(--border);overflow-y:auto;padding:16px;background:var(--paper);flex-shrink:0;}
+.results-panel{flex:1;overflow:auto;padding:24px;}
+
+@media print{.no-print{display:none!important}}
+
+/* ── Drag & Drop Variables ── */
+.var-pool{display:flex;flex-wrap:wrap;gap:5px;padding:8px;min-height:44px;background:var(--paper);border-radius:8px;border:1px solid var(--border-dark);transition:border-color 0.15s;}
+.var-pool.over{border-color:var(--blue);background:rgba(74,127,168,0.04);}
+.var-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:6px;font-size:12px;font-weight:500;cursor:grab;user-select:none;transition:box-shadow 0.15s,transform 0.15s,opacity 0.15s;white-space:nowrap;font-family:'Outfit',sans-serif;}
+.var-chip:hover{box-shadow:0 3px 10px rgba(0,0,0,0.12);transform:translateY(-1px);}
+.var-chip:active{cursor:grabbing;transform:scale(0.97);}
+.var-chip.dragging{opacity:0.35;pointer-events:none;}
+.var-chip.num{background:#EFF6FF;border:1px solid #BFDBFE;color:#1D4ED8;}
+.var-chip.cat{background:#FFF7ED;border:1px solid #FED7AA;color:#C2410C;}
+.var-badge{font-size:9px;font-family:'JetBrains Mono',monospace;opacity:0.55;letter-spacing:0.01em;}
+.drop-slot{border:2px dashed #D5D2CC;border-radius:9px;padding:8px 11px;min-height:42px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;transition:border-color 0.15s,background 0.15s;}
+.drop-slot.over{border-color:var(--blue);background:rgba(74,127,168,0.06);}
+.drop-slot.filled{border-style:solid;border-color:var(--border);}
+.drop-slot .slot-hint{font-size:11px;color:var(--text-light);font-style:italic;}
+
+/* ── Analysis Wizard ── */
+.intent-card{background:white;border:1px solid var(--border);border-radius:9px;padding:12px 14px;cursor:pointer;transition:border-color 0.18s,box-shadow 0.18s,transform 0.18s;display:flex;align-items:center;gap:11px;}
+.intent-card:hover{border-color:var(--blue);box-shadow:0 4px 14px rgba(74,127,168,0.12);transform:translateY(-2px);}
+.intent-card.selected{border-color:var(--gold);background:rgba(200,144,62,0.04);}
+.intent-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+.recommend-badge{padding:10px 13px;background:rgba(200,144,62,0.09);border:1px solid rgba(200,144,62,0.22);border-radius:8px;margin-top:14px;}
+
+/* ── Tutorial ── */
+.tutorial-step{background:white;border:1px solid var(--border);border-radius:11px;padding:20px 22px;position:relative;overflow:hidden;}
+.tutorial-step::before{content:attr(data-step);position:absolute;top:0;left:0;background:var(--gold);color:white;font-size:10px;font-weight:700;padding:3px 10px 3px 14px;border-bottom-right-radius:8px;font-family:'Outfit',sans-serif;letter-spacing:0.05em;}
+.step-line{width:2px;height:20px;background:linear-gradient(to bottom,var(--gold),var(--border));margin-left:20px;}
+.progress-bar{height:4px;background:var(--border);border-radius:3px;overflow:hidden;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--gold) 0%,var(--blue) 100%);border-radius:3px;transition:width 0.45s cubic-bezier(0.34,1.2,0.64,1);}
+.demo-badge{display:inline-flex;align-items:center;gap:5px;background:rgba(200,144,62,0.1);color:var(--gold);border:1px solid rgba(200,144,62,0.2);border-radius:6px;font-size:11px;font-weight:600;padding:3px 9px;font-family:'Outfit',sans-serif;}
+
+/* ── Animations ── */
+.fade-in{animation:fadeIn 0.22s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.slide-in{animation:slideIn 0.22s ease;}
+@keyframes slideIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+.pop-in{animation:popIn 0.2s cubic-bezier(0.34,1.56,0.64,1);}
+@keyframes popIn{from{opacity:0;transform:scale(0.88)}to{opacity:1;transform:scale(1)}}
+.module-enter{animation:moduleIn 0.2s ease;}
+@keyframes moduleIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Result enhancements ── */
+.result-summary{background:linear-gradient(135deg,rgba(13,27,42,0.04) 0%,rgba(74,127,168,0.06) 100%);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:20px;}
+.coef-row:hover td{background:rgba(74,127,168,0.05)!important;}
+.model-formula{font-family:'JetBrains Mono',monospace;font-size:12px;padding:10px 14px;background:rgba(74,127,168,0.07);border-left:3px solid var(--blue);border-radius:0 7px 7px 0;color:var(--blue);margin-bottom:14px;}
+
+/* ── Misc UX ── */
+.ghost-btn{background:none;border:none;cursor:pointer;font-family:'Outfit',sans-serif;color:var(--blue);font-size:12px;display:inline-flex;align-items:center;gap:4px;padding:0;transition:opacity 0.15s;}
+.ghost-btn:hover{opacity:0.7;}
+.kbd{background:var(--paper-dark);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-muted);}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useRef,useCallback,useMemo,useReducer,createContext,useContext}=React;
+
+/* ═══════════════════════════════════════════════════════════
+   SAMPLE DATA
+═══════════════════════════════════════════════════════════ */
+function buildIris(){
+  const d=[[5.1,3.5,1.4,0.2,'setosa'],[4.9,3.0,1.4,0.2,'setosa'],[4.7,3.2,1.3,0.2,'setosa'],[4.6,3.1,1.5,0.2,'setosa'],[5.0,3.6,1.4,0.2,'setosa'],[5.4,3.9,1.7,0.4,'setosa'],[4.6,3.4,1.4,0.3,'setosa'],[5.0,3.4,1.5,0.2,'setosa'],[4.4,2.9,1.4,0.2,'setosa'],[4.9,3.1,1.5,0.1,'setosa'],[5.4,3.7,1.5,0.2,'setosa'],[4.8,3.4,1.6,0.2,'setosa'],[4.8,3.0,1.4,0.1,'setosa'],[4.3,3.0,1.1,0.1,'setosa'],[5.8,4.0,1.2,0.2,'setosa'],[5.7,4.4,1.5,0.4,'setosa'],[5.4,3.9,1.3,0.4,'setosa'],[5.1,3.5,1.4,0.3,'setosa'],[5.7,3.8,1.7,0.3,'setosa'],[5.1,3.8,1.5,0.3,'setosa'],[5.4,3.4,1.7,0.2,'setosa'],[5.1,3.7,1.5,0.4,'setosa'],[4.6,3.6,1.0,0.2,'setosa'],[5.1,3.3,1.7,0.5,'setosa'],[4.8,3.4,1.9,0.2,'setosa'],[5.0,3.0,1.6,0.2,'setosa'],[5.0,3.4,1.6,0.4,'setosa'],[5.2,3.5,1.5,0.2,'setosa'],[5.2,3.4,1.4,0.2,'setosa'],[4.7,3.2,1.6,0.2,'setosa'],[4.8,3.1,1.6,0.2,'setosa'],[5.4,3.4,1.5,0.4,'setosa'],[5.2,4.1,1.5,0.1,'setosa'],[5.5,4.2,1.4,0.2,'setosa'],[4.9,3.1,1.5,0.2,'setosa'],[5.0,3.2,1.2,0.2,'setosa'],[5.5,3.5,1.3,0.2,'setosa'],[4.9,3.6,1.4,0.1,'setosa'],[4.4,3.0,1.3,0.2,'setosa'],[5.1,3.4,1.5,0.2,'setosa'],[5.0,3.5,1.3,0.3,'setosa'],[4.5,2.3,1.3,0.3,'setosa'],[4.4,3.2,1.3,0.2,'setosa'],[5.0,3.5,1.6,0.6,'setosa'],[5.1,3.8,1.9,0.4,'setosa'],[4.8,3.0,1.4,0.3,'setosa'],[5.1,3.8,1.6,0.2,'setosa'],[4.6,3.2,1.4,0.2,'setosa'],[5.3,3.7,1.5,0.2,'setosa'],[5.0,3.3,1.4,0.2,'setosa'],[7.0,3.2,4.7,1.4,'versicolor'],[6.4,3.2,4.5,1.5,'versicolor'],[6.9,3.1,4.9,1.5,'versicolor'],[5.5,2.3,4.0,1.3,'versicolor'],[6.5,2.8,4.6,1.5,'versicolor'],[5.7,2.8,4.5,1.3,'versicolor'],[6.3,3.3,4.7,1.6,'versicolor'],[4.9,2.4,3.3,1.0,'versicolor'],[6.6,2.9,4.6,1.3,'versicolor'],[5.2,2.7,3.9,1.4,'versicolor'],[5.0,2.0,3.5,1.0,'versicolor'],[5.9,3.0,4.2,1.5,'versicolor'],[6.0,2.2,4.0,1.0,'versicolor'],[6.1,2.9,4.7,1.4,'versicolor'],[5.6,2.9,3.6,1.3,'versicolor'],[6.7,3.1,4.4,1.4,'versicolor'],[5.6,3.0,4.5,1.5,'versicolor'],[5.8,2.7,4.1,1.0,'versicolor'],[6.2,2.2,4.5,1.5,'versicolor'],[5.6,2.5,3.9,1.1,'versicolor'],[5.9,3.2,4.8,1.8,'versicolor'],[6.1,2.8,4.0,1.3,'versicolor'],[6.3,2.5,4.9,1.5,'versicolor'],[6.1,2.8,4.7,1.2,'versicolor'],[6.4,2.9,4.3,1.3,'versicolor'],[6.6,3.0,4.4,1.4,'versicolor'],[6.8,2.8,4.8,1.4,'versicolor'],[6.7,3.0,5.0,1.7,'versicolor'],[6.0,2.9,4.5,1.5,'versicolor'],[5.7,2.6,3.5,1.0,'versicolor'],[5.5,2.4,3.8,1.1,'versicolor'],[5.5,2.4,3.7,1.0,'versicolor'],[5.8,2.7,3.9,1.2,'versicolor'],[6.0,2.7,5.1,1.6,'versicolor'],[5.4,3.0,4.5,1.5,'versicolor'],[6.0,3.4,4.5,1.6,'versicolor'],[6.7,3.1,4.7,1.5,'versicolor'],[6.3,2.3,4.4,1.3,'versicolor'],[5.6,3.0,4.1,1.3,'versicolor'],[5.5,2.5,4.0,1.3,'versicolor'],[5.5,2.6,4.4,1.2,'versicolor'],[6.1,3.0,4.6,1.4,'versicolor'],[5.8,2.6,4.0,1.2,'versicolor'],[5.0,2.3,3.3,1.0,'versicolor'],[5.6,2.7,4.2,1.3,'versicolor'],[5.7,3.0,4.2,1.2,'versicolor'],[5.7,2.9,4.2,1.3,'versicolor'],[6.2,2.9,4.3,1.3,'versicolor'],[5.1,2.5,3.0,1.1,'versicolor'],[5.7,2.8,4.1,1.3,'versicolor'],[6.3,3.3,6.0,2.5,'virginica'],[5.8,2.7,5.1,1.9,'virginica'],[7.1,3.0,5.9,2.1,'virginica'],[6.3,2.9,5.6,1.8,'virginica'],[6.5,3.0,5.8,2.2,'virginica'],[7.6,3.0,6.6,2.1,'virginica'],[4.9,2.5,4.5,1.7,'virginica'],[7.3,2.9,6.3,1.8,'virginica'],[6.7,2.5,5.8,1.8,'virginica'],[7.2,3.6,6.1,2.5,'virginica'],[6.5,3.2,5.1,2.0,'virginica'],[6.4,2.7,5.3,1.9,'virginica'],[6.8,3.0,5.5,2.1,'virginica'],[5.7,2.5,5.0,2.0,'virginica'],[5.8,2.8,5.1,2.4,'virginica'],[6.4,3.2,5.3,2.3,'virginica'],[6.5,3.0,5.5,1.8,'virginica'],[7.7,3.8,6.7,2.2,'virginica'],[7.7,2.6,6.9,2.3,'virginica'],[6.0,2.2,5.0,1.5,'virginica'],[6.9,3.2,5.7,2.3,'virginica'],[5.6,2.8,4.9,2.0,'virginica'],[7.7,2.8,6.7,2.0,'virginica'],[6.3,2.7,4.9,1.8,'virginica'],[6.7,3.3,5.7,2.1,'virginica'],[7.2,3.2,6.0,1.8,'virginica'],[6.2,2.8,4.8,1.8,'virginica'],[6.1,3.0,4.9,1.8,'virginica'],[6.4,2.8,5.6,2.1,'virginica'],[7.2,3.0,5.8,1.6,'virginica'],[7.4,2.8,6.1,1.9,'virginica'],[7.9,3.8,6.4,2.0,'virginica'],[6.4,2.8,5.6,2.2,'virginica'],[6.3,2.8,5.1,1.5,'virginica'],[6.1,2.6,5.6,1.4,'virginica'],[7.7,3.0,6.1,2.3,'virginica'],[6.3,3.4,5.6,2.4,'virginica'],[6.4,3.1,5.5,1.8,'virginica'],[6.0,3.0,4.8,1.8,'virginica'],[6.9,3.1,5.4,2.1,'virginica'],[6.7,3.1,5.6,2.4,'virginica'],[6.9,3.1,5.1,2.3,'virginica'],[5.8,2.7,5.1,1.9,'virginica'],[6.8,3.2,5.9,2.3,'virginica'],[6.7,3.3,5.7,2.5,'virginica'],[6.7,3.0,5.2,2.3,'virginica'],[6.3,2.5,5.0,1.9,'virginica'],[6.5,3.0,5.2,2.0,'virginica'],[6.2,3.4,5.4,2.3,'virginica'],[5.9,3.0,5.1,1.8,'virginica']];
+  return d.map((r,i)=>({id:i,sepal_length:r[0],sepal_width:r[1],petal_length:r[2],petal_width:r[3],species:r[4]}));
+}
+function buildMtcars(){
+  const d=[['Mazda RX4',21,6,160,110,3.9,2.62,16.46,0,1,4,4],['Mazda RX4 Wag',21,6,160,110,3.9,2.875,17.02,0,1,4,4],['Datsun 710',22.8,4,108,93,3.85,2.32,18.61,1,1,4,1],['Hornet 4 Drive',21.4,6,258,110,3.08,3.215,19.44,1,0,3,1],['Hornet Sportabout',18.7,8,360,175,3.15,3.44,17.02,0,0,3,2],['Valiant',18.1,6,225,105,2.76,3.46,20.22,1,0,3,1],['Duster 360',14.3,8,360,245,3.21,3.57,15.84,0,0,3,4],['Merc 240D',24.4,4,146.7,62,3.69,3.19,20,1,0,4,2],['Merc 230',22.8,4,140.8,95,3.92,3.15,22.9,1,0,4,2],['Merc 280',19.2,6,167.6,123,3.92,3.44,18.3,1,0,4,4],['Merc 280C',17.8,6,167.6,123,3.92,3.44,18.9,1,0,4,4],['Merc 450SE',16.4,8,275.8,180,3.07,4.07,17.4,0,0,3,3],['Merc 450SL',17.3,8,275.8,180,3.07,3.73,17.6,0,0,3,3],['Merc 450SLC',15.2,8,275.8,180,3.07,3.78,18,0,0,3,3],['Cadillac Fleetwood',10.4,8,472,205,2.93,5.25,17.98,0,0,3,4],['Lincoln Continental',10.4,8,460,215,3,5.424,17.82,0,0,3,4],['Chrysler Imperial',14.7,8,440,230,3.23,5.345,17.42,0,0,3,4],['Fiat 128',32.4,4,78.7,66,4.08,2.2,19.47,1,1,4,1],['Honda Civic',30.4,4,75.7,52,4.93,1.615,18.52,1,1,4,2],['Toyota Corolla',33.9,4,71.1,65,4.22,1.835,19.9,1,1,4,1],['Toyota Corona',21.5,4,120.1,97,3.7,2.465,20.01,1,0,3,1],['Dodge Challenger',15.5,8,318,150,2.76,3.52,16.87,0,0,3,2],['AMC Javelin',15.2,8,304,150,3.15,3.435,17.3,0,0,3,2],['Camaro Z28',13.3,8,350,245,3.73,3.84,15.41,0,0,3,4],['Pontiac Firebird',19.2,8,400,175,3.08,3.845,17.05,0,0,3,2],['Fiat X1-9',27.3,4,79,66,4.08,1.935,18.9,1,1,4,1],['Porsche 914-2',26,4,120.3,91,4.43,2.14,16.7,0,1,5,2],['Lotus Europa',30.4,4,95.1,113,3.77,1.513,16.9,1,1,5,2],['Ford Pantera L',15.8,8,351,264,4.22,3.17,14.5,0,1,5,4],['Ferrari Dino',19.7,6,145,175,3.62,2.77,15.5,0,1,5,6],['Maserati Bora',15,8,301,335,3.54,3.57,14.6,0,1,5,8],['Volvo 142E',21.4,4,121,109,4.11,2.78,18.6,1,1,4,2]];
+  return d.map((r,i)=>({id:i,name:r[0],mpg:r[1],cyl:r[2],disp:r[3],hp:r[4],drat:r[5],wt:r[6],qsec:r[7],vs:r[8],am:r[9],gear:r[10],carb:r[11]}));
+}
+const SAMPLES={
+  iris:{name:'Iris Dataset',desc:'Fisher/Anderson iris · 150 obs, 5 vars',cols:['sepal_length','sepal_width','petal_length','petal_width','species'],types:{sepal_length:'numeric',sepal_width:'numeric',petal_length:'numeric',petal_width:'numeric',species:'text'},rows:buildIris()},
+  mtcars:{name:'Motor Trend Cars',desc:'Fuel & performance · 32 obs, 12 vars',cols:['name','mpg','cyl','disp','hp','drat','wt','qsec','vs','am','gear','carb'],types:{name:'text',mpg:'numeric',cyl:'numeric',disp:'numeric',hp:'numeric',drat:'numeric',wt:'numeric',qsec:'numeric',vs:'numeric',am:'numeric',gear:'numeric',carb:'numeric'},rows:buildMtcars()}
+};
+
+/* ═══════════════════════════════════════════════════════════
+   INDEXEDDB
+═══════════════════════════════════════════════════════════ */
+let _db=null;
+async function getDB(){
+  if(_db)return _db;
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open('StatLabPro',2);
+    r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('projects'))db.createObjectStore('projects',{keyPath:'id'});};
+    r.onsuccess=e=>{_db=e.target.result;res(_db);};
+    r.onerror=()=>rej(r.error);
+  });
+}
+async function dbSave(project){const db=await getDB();return new Promise((res,rej)=>{const tx=db.transaction('projects','readwrite');tx.objectStore('projects').put({...project,savedAt:Date.now()});tx.oncomplete=res;tx.onerror=()=>rej(tx.error);});}
+async function dbList(){const db=await getDB();return new Promise((res,rej)=>{const tx=db.transaction('projects','readonly');const r=tx.objectStore('projects').getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);});}
+
+/* ═══════════════════════════════════════════════════════════
+   STATISTICS ENGINE
+═══════════════════════════════════════════════════════════ */
+const nan=v=>v===null||v===undefined||v===''||isNaN(Number(v));
+const clean=arr=>arr.filter(v=>!nan(v)).map(Number);
+function vmean(a){const v=clean(a);if(!v.length)return NaN;return v.reduce((s,x)=>s+x,0)/v.length;}
+function vvariance(a,s=true){const v=clean(a);const n=v.length;if(n<2)return NaN;const m=vmean(v);return v.reduce((ss,x)=>ss+(x-m)**2,0)/(s?n-1:n);}
+function vstd(a,s=true){return Math.sqrt(vvariance(a,s));}
+function vmedian(a){const v=[...clean(a)].sort((a,b)=>a-b);if(!v.length)return NaN;const mid=Math.floor(v.length/2);return v.length%2?v[mid]:(v[mid-1]+v[mid])/2;}
+function vquantile(a,q){const v=[...clean(a)].sort((a,b)=>a-b);if(!v.length)return NaN;const p=(v.length-1)*q,b=Math.floor(p),r=p-b;return v[b+1]!==undefined?v[b]+r*(v[b+1]-v[b]):v[b];}
+function vskew(a){const v=clean(a);const n=v.length;if(n<3)return NaN;const m=vmean(v),s=vstd(v);return(n/((n-1)*(n-2)))*v.reduce((ss,x)=>ss+((x-m)/s)**3,0);}
+function vkurt(a){const v=clean(a);const n=v.length;if(n<4)return NaN;const m=vmean(v),s=vstd(v);return((n*(n+1))/((n-1)*(n-2)*(n-3)))*v.reduce((ss,x)=>ss+((x-m)/s)**4,0)-(3*(n-1)**2)/((n-2)*(n-3));}
+function lgamma(x){const c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];let y=x,tmp=x+5.5;tmp-=(x+0.5)*Math.log(tmp);let ser=1.000000000190015;for(let j=0;j<6;j++)ser+=c[j]/++y;return-tmp+Math.log(2.5066282746310005*ser/x);}
+function betaCF(x,a,b){const MAXIT=200,EPS=3e-7,FPMIN=1e-30,qab=a+b,qap=a+1,qam=a-1;let c=1,d=1-qab*x/qap;if(Math.abs(d)<FPMIN)d=FPMIN;d=1/d;let h=d;for(let m=1;m<=MAXIT;m++){const m2=2*m;let aa=m*(b-m)*x/((qam+m2)*(a+m2));d=1+aa*d;if(Math.abs(d)<FPMIN)d=FPMIN;c=1+aa/c;if(Math.abs(c)<FPMIN)c=FPMIN;d=1/d;h*=d*c;aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));d=1+aa*d;if(Math.abs(d)<FPMIN)d=FPMIN;c=1+aa/c;if(Math.abs(c)<FPMIN)c=FPMIN;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<EPS)break;}return h;}
+function ibeta(x,a,b){if(x<=0)return 0;if(x>=1)return 1;const lb=lgamma(a)+lgamma(b)-lgamma(a+b),front=Math.exp(Math.log(x)*a+Math.log(1-x)*b-lb)/a;return front*betaCF(x,a,b);}
+function tCDF(t,df){const x=df/(df+t*t),p=0.5*ibeta(x,df/2,0.5);return t>=0?1-p:p;}
+function fCDF(x,d1,d2){if(x<=0)return 0;return ibeta(d1*x/(d1*x+d2),d1/2,d2/2);}
+function igamma(a,x){if(x<=0)return 0;let s=0,t=1/a;s=t;for(let n=1;n<200;n++){t*=x/(a+n);s+=t;if(Math.abs(t)<1e-10*Math.abs(s))break;}return s*Math.exp(-x+a*Math.log(x)-lgamma(a));}
+function chi2CDF(x,df){if(x<=0)return 0;return igamma(df/2,x/2)/Math.exp(lgamma(df/2));}
+function normalCDF(x){const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;const sg=x<0?-1:1;x=Math.abs(x)/Math.sqrt(2);const t=1/(1+p*x);const poly=t*(a1+t*(a2+t*(a3+t*(a4+t*a5))));return 0.5*(1+sg*(1-poly*Math.exp(-x*x)));}
+function tCrit(df,alpha){let lo=0,hi=20;for(let i=0;i<100;i++){const mid=(lo+hi)/2;if(1-tCDF(mid,df)>alpha)lo=mid;else hi=mid;}return(lo+hi)/2;}
+
+function describe(arr){
+  const v=clean(arr);const miss=arr.length-v.length;const n=v.length;
+  if(!n)return{n:0,missing:miss};
+  const m=vmean(v),s=vstd(v),se=s/Math.sqrt(n);
+  const q1=vquantile(v,0.25),q3=vquantile(v,0.75);
+  const tc=tCrit(n-1,0.025);
+  return{n,missing:miss,mean:m,median:vmedian(v),sd:s,se,min:Math.min(...v),max:Math.max(...v),q1,q3,iqr:q3-q1,skewness:vskew(v),kurtosis:vkurt(v),ci95_lo:m-tc*se,ci95_hi:m+tc*se,sum:v.reduce((a,b)=>a+b,0)};
+}
+
+function ttest1(vals,mu0=0){
+  const v=clean(vals);const n=v.length,m=vmean(v),s=vstd(v),se=s/Math.sqrt(n);
+  const t=(m-mu0)/se,df=n-1,p=2*(1-tCDF(Math.abs(t),df)),tc=tCrit(df,0.025);
+  return{label:'One-Sample t-Test',n,mean:m,sd:s,se,t,df,p,ci_lo:m-tc*se,ci_hi:m+tc*se,d:(m-mu0)/s,mu0};
+}
+function ttest2(a,b,eq=false){
+  const va=clean(a),vb=clean(b);const n1=va.length,n2=vb.length,m1=vmean(va),m2=vmean(vb),s1=vstd(va),s2=vstd(vb);
+  let se,df;
+  if(eq){const sp=Math.sqrt(((n1-1)*s1**2+(n2-1)*s2**2)/(n1+n2-2));se=sp*Math.sqrt(1/n1+1/n2);df=n1+n2-2;}
+  else{const vv=s1**2/n1+s2**2/n2;se=Math.sqrt(vv);df=vv**2/((s1**2/n1)**2/(n1-1)+(s2**2/n2)**2/(n2-1));}
+  const t=(m1-m2)/se,p=2*(1-tCDF(Math.abs(t),df)),tc=tCrit(df,0.025);
+  const sp2=Math.sqrt(((n1-1)*s1**2+(n2-1)*s2**2)/(n1+n2-2));
+  return{label:eq?'Two-Sample t-Test (Equal Var)':"Welch's t-Test",n1,n2,mean1:m1,mean2:m2,sd1:s1,sd2:s2,diff:m1-m2,se,t,df,p,ci_lo:(m1-m2)-tc*se,ci_hi:(m1-m2)+tc*se,d:(m1-m2)/sp2};
+}
+function ttestpaired(a,b){
+  const diffs=a.map((x,i)=>x-b[i]).filter((_,i)=>!nan(a[i])&&!nan(b[i]));
+  return{...ttest1(diffs,0),label:'Paired t-Test'};
+}
+function pearsonR(x,y){
+  const pairs=x.map((xi,i)=>[xi,y[i]]).filter(([a,b])=>!nan(a)&&!nan(b));
+  const px=pairs.map(p=>p[0]),py=pairs.map(p=>p[1]);
+  const mx=vmean(px),my=vmean(py);
+  const num=px.reduce((s,xi,i)=>s+(xi-mx)*(py[i]-my),0);
+  const den=Math.sqrt(px.reduce((s,xi)=>s+(xi-mx)**2,0)*py.reduce((s,yi)=>s+(yi-my)**2,0));
+  return den?num/den:0;
+}
+function spearmanR(x,y){
+  function rank(arr){const s=[...arr].map((v,i)=>[v,i]).sort((a,b)=>a[0]-b[0]);const r=new Array(arr.length);for(let i=0;i<s.length;){let j=i;while(j<s.length&&s[j][0]===s[i][0])j++;const rv=(i+j-1)/2+1;for(let k=i;k<j;k++)r[s[k][1]]=rv;i=j;}return r;}
+  const pairs=x.map((xi,i)=>[xi,y[i]]).filter(([a,b])=>!nan(a)&&!nan(b));
+  if(!pairs.length)return 0;
+  return pearsonR(rank(pairs.map(p=>p[0])),rank(pairs.map(p=>p[1])));
+}
+function corrMatrix(rows,cols,method='pearson'){
+  const fn=method==='spearman'?spearmanR:pearsonR;
+  const mat=cols.map(c1=>cols.map(c2=>{
+    const x=rows.map(r=>r[c1]),y=rows.map(r=>r[c2]);
+    const r=fn(x,y);const n=Math.min(clean(x).length,clean(y).length);
+    const t=r*Math.sqrt(n-2)/Math.sqrt(1-r*r);
+    return{r:+r.toFixed(4),p:+(2*(1-tCDF(Math.abs(t),n-2))).toFixed(4),n};
+  }));
+  return{cols,matrix:mat,method};
+}
+function invertMatrix(m){
+  const n=m.length;
+  const aug=m.map((row,i)=>[...row,...Array.from({length:n},(_,j)=>i===j?1:0)]);
+  for(let col=0;col<n;col++){
+    let piv=-1,mx=0;
+    for(let row=col;row<n;row++)if(Math.abs(aug[row][col])>mx){mx=Math.abs(aug[row][col]);piv=row;}
+    if(piv===-1||mx<1e-12)return null;
+    [aug[col],aug[piv]]=[aug[piv],aug[col]];
+    const sc=aug[col][col];
+    for(let j=0;j<2*n;j++)aug[col][j]/=sc;
+    for(let row=0;row<n;row++){if(row===col)continue;const f=aug[row][col];for(let j=0;j<2*n;j++)aug[row][j]-=f*aug[col][j];}
+  }
+  return aug.map(row=>row.slice(n));
+}
+function olsRegression(y_vals,X_mat){
+  const n=y_vals.length;
+  const X=X_mat.map(row=>[1,...row]);const k=X[0].length;
+  const XtX=Array.from({length:k},(_,i)=>Array.from({length:k},(_,j)=>X.reduce((s,row)=>s+row[i]*row[j],0)));
+  const Xty=Array.from({length:k},(_,i)=>X.reduce((s,row,ri)=>s+row[i]*y_vals[ri],0));
+  const inv=invertMatrix(XtX);if(!inv)return null;
+  const beta=inv.map(row=>row.reduce((s,v,j)=>s+v*Xty[j],0));
+  const fitted=X.map(row=>row.reduce((s,v,j)=>s+v*beta[j],0));
+  const resid=y_vals.map((y,i)=>y-fitted[i]);
+  const sse=resid.reduce((s,r)=>s+r**2,0);const df_e=n-k,mse=sse/df_e;
+  const ymean=vmean(y_vals);const sst=y_vals.reduce((s,y)=>s+(y-ymean)**2,0);
+  const r2=1-sse/sst,r2adj=1-(1-r2)*(n-1)/(n-k);
+  const ssm=sst-sse,df_m=k-1,f=(ssm/df_m)/mse,p_f=1-fCDF(f,df_m,df_e);
+  const se_b=inv.map((row,i)=>Math.sqrt(mse*row[i]));
+  const t_v=beta.map((b,i)=>b/se_b[i]);
+  const p_v=t_v.map(t=>2*(1-tCDF(Math.abs(t),df_e)));
+  const tc=tCrit(df_e,0.025);
+  return{beta,se_b,t_v,p_v,fitted,residuals:resid,r2,r2adj,f,p_f,df_m,df_e,mse,rmse:Math.sqrt(mse),n,ci_lo:beta.map((b,i)=>b-tc*se_b[i]),ci_hi:beta.map((b,i)=>b+tc*se_b[i])};
+}
+function anova1(rows,dep,grp){
+  const groups={};
+  rows.forEach(r=>{const g=r[grp];const v=Number(r[dep]);if(g!==null&&g!==''&&!isNaN(v)){if(!groups[g])groups[g]=[];groups[g].push(v);}});
+  const gnames=Object.keys(groups),k=gnames.length;
+  const allv=Object.values(groups).flat(),N=allv.length,gm=vmean(allv);
+  const ssb=gnames.reduce((s,g)=>s+groups[g].length*(vmean(groups[g])-gm)**2,0);
+  const ssw=gnames.reduce((s,g)=>{const gmu=vmean(groups[g]);return s+groups[g].reduce((ss,v)=>ss+(v-gmu)**2,0);},0);
+  const dfb=k-1,dfw=N-k,msb=ssb/dfb,msw=ssw/dfw,F=msb/msw,p=1-fCDF(F,dfb,dfw);
+  const eta2=ssb/(ssb+ssw);
+  const gstats=gnames.map(g=>({group:g,n:groups[g].length,mean:vmean(groups[g]),sd:vstd(groups[g]),se:vstd(groups[g])/Math.sqrt(groups[g].length)}));
+  const tukey=[];
+  for(let i=0;i<gnames.length;i++)for(let j=i+1;j<gnames.length;j++){
+    const g1=gnames[i],g2=gnames[j];const n1=groups[g1].length,n2=groups[g2].length;
+    const diff=vmean(groups[g1])-vmean(groups[g2]);const se=Math.sqrt(msw*(1/n1+1/n2)/2);
+    tukey.push({g1,g2,diff,se,q:Math.abs(diff)/se});
+  }
+  return{k,N,groups:gstats,ssb,ssw,dfb,dfw,msb,msw,F,p,eta2,tukey};
+}
+/* ── Logistic Regression (Newton-Raphson IRLS) ── */
+function sigmoid(x){return 1/(1+Math.exp(-Math.max(-500,Math.min(500,x))));}
+function logisticReg(y_vals,X_mat,maxIter=200,tol=1e-8){
+  const n=y_vals.length;
+  const X=X_mat.map(row=>[1,...row]);const k=X[0].length;
+  let beta=new Array(k).fill(0);
+  for(let iter=0;iter<maxIter;iter++){
+    const p=X.map(row=>sigmoid(row.reduce((s,v,j)=>s+v*beta[j],0)));
+    const grad=Array(k).fill(0);
+    const H=Array.from({length:k},()=>Array(k).fill(0));
+    for(let i=0;i<n;i++){
+      const err=y_vals[i]-p[i],w=p[i]*(1-p[i]);
+      for(let j=0;j<k;j++){grad[j]+=X[i][j]*err;for(let l=0;l<k;l++)H[j][l]+=X[i][j]*X[i][l]*w;}
+    }
+    const Hinv=invertMatrix(H);if(!Hinv)break;
+    let maxD=0;
+    const nb=beta.map((b,j)=>{const d=Hinv[j].reduce((s,h,l)=>s+h*grad[l],0);maxD=Math.max(maxD,Math.abs(d));return b+d;});
+    beta=nb;if(maxD<tol)break;
+  }
+  const p=X.map(row=>sigmoid(row.reduce((s,v,j)=>s+v*beta[j],0)));
+  const H=Array.from({length:k},()=>Array(k).fill(0));
+  for(let i=0;i<n;i++){const w=p[i]*(1-p[i]);for(let j=0;j<k;j++)for(let l=0;l<k;l++)H[j][l]+=X[i][j]*X[i][l]*w;}
+  const Hinv=invertMatrix(H);
+  const se=Hinv?Hinv.map((row,i)=>Math.sqrt(Math.max(0,row[i]))):beta.map(()=>NaN);
+  const z_v=beta.map((b,i)=>b/se[i]);
+  const p_v=z_v.map(z=>2*(1-normalCDF(Math.abs(z))));
+  const ll=y_vals.reduce((s,y,i)=>s+y*Math.log(p[i]+1e-15)+(1-y)*Math.log(1-p[i]+1e-15),0);
+  const pm=vmean(y_vals);
+  const ll0=y_vals.reduce((s,y)=>s+y*Math.log(pm+1e-15)+(1-y)*Math.log(1-pm+1e-15),0);
+  const mcfR2=1-ll/ll0;
+  const pred=p.map(pi=>pi>=0.5?1:0);
+  const acc=pred.filter((pi,i)=>pi===y_vals[i]).length/n;
+  const aic=-2*ll+2*k,bic=-2*ll+k*Math.log(n);
+  return{beta,se,z_v,p_v,ll,ll0,mcfR2,n,k,aic,bic,accuracy:acc,
+    ci_lo:beta.map((b,i)=>b-1.96*se[i]),ci_hi:beta.map((b,i)=>b+1.96*se[i]),
+    or:beta.map(b=>Math.exp(b)),fitted:p};
+}
+
+/* ── Poisson Regression (log-link GLM) ── */
+function poissonReg(y_vals,X_mat,maxIter=200,tol=1e-8){
+  const n=y_vals.length;
+  const X=X_mat.map(row=>[1,...row]);const k=X[0].length;
+  let beta=new Array(k).fill(0);
+  for(let iter=0;iter<maxIter;iter++){
+    const mu=X.map(row=>Math.exp(Math.min(500,row.reduce((s,v,j)=>s+v*beta[j],0))));
+    const grad=Array(k).fill(0);
+    const H=Array.from({length:k},()=>Array(k).fill(0));
+    for(let i=0;i<n;i++){
+      const err=y_vals[i]-mu[i];
+      for(let j=0;j<k;j++){grad[j]+=X[i][j]*err;for(let l=0;l<k;l++)H[j][l]+=X[i][j]*X[i][l]*mu[i];}
+    }
+    const Hinv=invertMatrix(H);if(!Hinv)break;
+    let maxD=0;
+    const nb=beta.map((b,j)=>{const d=Hinv[j].reduce((s,h,l)=>s+h*grad[l],0);maxD=Math.max(maxD,Math.abs(d));return b+d;});
+    beta=nb;if(maxD<tol)break;
+  }
+  const mu=X.map(row=>Math.exp(Math.min(500,row.reduce((s,v,j)=>s+v*beta[j],0))));
+  const H=Array.from({length:k},()=>Array(k).fill(0));
+  for(let i=0;i<n;i++)for(let j=0;j<k;j++)for(let l=0;l<k;l++)H[j][l]+=X[i][j]*X[i][l]*mu[i];
+  const Hinv=invertMatrix(H);
+  const se=Hinv?Hinv.map((row,i)=>Math.sqrt(Math.max(0,row[i]))):beta.map(()=>NaN);
+  const z_v=beta.map((b,i)=>b/se[i]);
+  const p_v=z_v.map(z=>2*(1-normalCDF(Math.abs(z))));
+  const ll=y_vals.reduce((s,y,i)=>s+y*Math.log(mu[i]+1e-15)-mu[i],0);
+  const mum=vmean(y_vals);
+  const ll0=y_vals.reduce((s,y)=>s+y*Math.log(mum+1e-15)-mum,0);
+  const deviance=-2*(ll-ll0);const aic=-2*ll+2*k,bic=-2*ll+k*Math.log(n);
+  return{beta,se,z_v,p_v,ll,ll0,deviance,n,k,aic,bic,
+    ci_lo:beta.map((b,i)=>b-1.96*se[i]),ci_hi:beta.map((b,i)=>b+1.96*se[i]),
+    irr:beta.map(b=>Math.exp(b)),fitted:mu};
+}
+function mannWhitney(x,y){
+  const vx=clean(x),vy=clean(y);const nx=vx.length,ny=vy.length;
+  let U1=0;for(let i=0;i<nx;i++)for(let j=0;j<ny;j++){if(vx[i]>vy[j])U1++;else if(vx[i]===vy[j])U1+=0.5;}
+  const U2=nx*ny-U1,U=Math.min(U1,U2);
+  const mu=nx*ny/2,sigma=Math.sqrt(nx*ny*(nx+ny+1)/12);
+  const z=(U-mu)/sigma,p=2*(1-normalCDF(Math.abs(z)));
+  return{label:'Mann-Whitney U',U,U1,U2,z,p,nx,ny};
+}
+function chiSqIndep(rows,c1,c2){
+  const v1=[...new Set(rows.map(r=>r[c1]).filter(v=>v!==''))];
+  const v2=[...new Set(rows.map(r=>r[c2]).filter(v=>v!==''))];
+  const obs=v1.map(a=>v2.map(b=>rows.filter(r=>r[c1]===a&&r[c2]===b).length));
+  const rt=obs.map(row=>row.reduce((a,b)=>a+b,0));
+  const ct=v2.map((_,j)=>obs.reduce((s,row)=>s+row[j],0));
+  const n=rows.length;
+  const exp=v1.map((_,i)=>v2.map((_,j)=>rt[i]*ct[j]/n));
+  const chi2=obs.flat().reduce((s,o,k)=>s+(o-exp.flat()[k])**2/(exp.flat()[k]||1),0);
+  const df=(v1.length-1)*(v2.length-1),p=1-chi2CDF(chi2,df);
+  return{label:'Chi-Square Test',chi2,df,p,cramersV:Math.sqrt(chi2/(n*(Math.min(v1.length,v2.length)-1))),v1,v2,obs,exp,n};
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DATA UTILITIES
+═══════════════════════════════════════════════════════════ */
+function inferType(vals){
+  const nn=vals.filter(v=>v!==null&&v!==undefined&&v!=='');
+  if(!nn.length)return'text';
+  if(nn.filter(v=>!isNaN(Number(v))).length/nn.length>0.85)return'numeric';
+  return'text';
+}
+function parseText(text){
+  const r=Papa.parse(text.trim(),{header:true,skipEmptyLines:true,dynamicTyping:false});
+  if(!r.data.length)return null;
+  const cols=r.meta.fields||[];
+  const rows=r.data.map((row,i)=>({id:i,...row}));
+  const types={};cols.forEach(c=>{types[c]=inferType(rows.map(r=>r[c]));});
+  return{columns:cols,rows,types};
+}
+function numCols(ds){return ds?ds.columns.filter(c=>ds.types[c]==='numeric'):[];}
+function catCols(ds){return ds?ds.columns.filter(c=>ds.types[c]!=='numeric'):[];}
+function getNum(ds,col){return ds.rows.map(r=>Number(r[col])).filter(v=>!isNaN(v));}
+function getVal(ds,col){return ds.rows.map(r=>r[col]);}
+function fmt(v,dp=4){if(v===null||v===undefined||isNaN(v))return'—';const n=Number(v);if(n===0)return'0';if(Math.abs(n)>=10000||Math.abs(n)<0.001)return n.toExponential(2);return n.toFixed(dp);}
+function fmtP(p){if(isNaN(p))return'—';if(p<0.001)return'< .001';return p.toFixed(3).replace('0.','.');}
+function sig(p){if(p<0.001)return'***';if(p<0.01)return'**';if(p<0.05)return'*';if(p<0.1)return'.';return'';}
+function sigCls(p){if(p<0.001)return'p1';if(p<0.05)return'p5';if(p<0.1)return'p10';return'pns';}
+function dlCSV(rows,name){const csv=Papa.unparse(rows);const b=new Blob([csv],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+function dlJSON(data,name){const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+function filterRows(rows,conds){
+  return rows.filter(r=>conds.every(c=>{
+    const v=r[c.col],n=Number(v);
+    switch(c.op){case'==':return String(v)===String(c.val);case'!=':return String(v)!==String(c.val);case'>':return!isNaN(n)&&n>Number(c.val);case'<':return!isNaN(n)&&n<Number(c.val);case'>=':return!isNaN(n)&&n>=Number(c.val);case'<=':return!isNaN(n)&&n<=Number(c.val);case'contains':return String(v).toLowerCase().includes(String(c.val).toLowerCase());case'is_missing':return v===null||v===undefined||v==='';case'not_missing':return v!==null&&v!==undefined&&v!=='';default:return true;}
+  }));
+}
+function pivotLonger(rows,cols,namesTo,valuesTo,idCols){
+  const result=[];
+  rows.forEach((row,i)=>{
+    const base={};idCols.forEach(c=>{base[c]=row[c];});if(!idCols.length)base._id=i;
+    cols.forEach(c=>result.push({...base,[namesTo]:c,[valuesTo]:row[c]}));
+  });
+  return result;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   APP STATE
+═══════════════════════════════════════════════════════════ */
+const initialState={datasets:[],activeId:null,analyses:[],charts:[],module:'home',projectName:'Untitled Project',projectId:'proj_'+Date.now(),savedAt:null};
+function reducer(state,action){
+  switch(action.type){
+    case'SET_MODULE':return{...state,module:action.m};
+    case'ADD_DS':{const ds=action.ds;return{...state,datasets:[...state.datasets,ds],activeId:ds.id};}
+    case'UPD_DS':return{...state,datasets:state.datasets.map(d=>d.id===action.id?{...d,...action.up}:d)};
+    case'DEL_DS':{const rem=state.datasets.filter(d=>d.id!==action.id);return{...state,datasets:rem,activeId:rem[0]?.id||null};}
+    case'SET_ACTIVE':return{...state,activeId:action.id};
+    case'ADD_ANALYSIS':return{...state,analyses:[action.a,...state.analyses]};
+    case'ADD_CHART':return{...state,charts:[action.c,...state.charts]};
+    case'DEL_CHART':return{...state,charts:state.charts.filter(c=>c.id!==action.id)};
+    case'SET_NAME':return{...state,projectName:action.name};
+    case'SAVED':return{...state,savedAt:action.t};
+    case'LOAD':return{...state,...action.s,module:state.module};
+    default:return state;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════════════════════ */
+const MODS=[
+  {id:'home',label:'Home',icon:'⌂'},
+  {id:'tutorial',label:'Tutorial',icon:'▶',accent:true},
+  {id:'data',label:'Data Explorer',icon:'⊞'},
+  {id:'clean',label:'Data Workshop',icon:'⚙'},
+  {id:'visualize',label:'Visualization',icon:'◈'},
+  {id:'analyze',label:'Analysis Lab',icon:'∑'},
+  {id:'models',label:'Model Builder',icon:'⬡'},
+  {id:'report',label:'Report & Export',icon:'◧'},
+];
+function Sidebar({state,dispatch}){
+  const ds=state.datasets.find(d=>d.id===state.activeId);
+  return(
+    <div className="sidebar">
+      <div style={{padding:'18px 16px 14px',borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
+        <div style={{fontSize:17,fontWeight:700,color:'white',fontFamily:"'Crimson Pro',serif",letterSpacing:'-0.015em'}}>
+          StatLab<span style={{color:'var(--gold)'}}>Pro</span>
+        </div>
+        <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',marginTop:2,fontFamily:'monospace',letterSpacing:'0.04em'}}>v1.0 · local-first · private</div>
+      </div>
+      <div style={{padding:'10px 12px 8px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+        <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:5}}>Project</div>
+        <input value={state.projectName} onChange={e=>dispatch({type:'SET_NAME',name:e.target.value})} style={{background:'rgba(255,255,255,0.07)',border:'none',color:'rgba(255,255,255,0.85)',fontSize:12,fontWeight:500,padding:'6px 9px',borderRadius:5,width:'100%',outline:'none',fontFamily:"'Outfit',sans-serif"}}/>
+        {state.savedAt&&<div style={{fontSize:10,color:'rgba(255,255,255,0.22)',marginTop:3}}>Saved {new Date(state.savedAt).toLocaleTimeString()}</div>}
+      </div>
+      <div style={{flex:1,overflowY:'auto',paddingTop:6}}>
+        <div className="section-head" style={{color:'rgba(255,255,255,0.28)'}}>Modules</div>
+        {MODS.map(m=>(
+          <div key={m.id} className={`nav-item${state.module===m.id?' active':''}`}
+            style={m.accent&&state.module!==m.id?{borderLeft:'2px solid rgba(200,144,62,0.3)',color:'rgba(255,255,255,0.7)'}:{}} onClick={()=>dispatch({type:'SET_MODULE',m:m.id})}>
+            <span className="icon">{m.icon}</span><span>{m.label}</span>
+          </div>
+        ))}
+      </div>
+      {ds&&(
+        <div style={{padding:'12px 14px',borderTop:'1px solid rgba(255,255,255,0.06)',background:'rgba(0,0,0,0.18)'}}>
+          <div style={{fontSize:10,color:'rgba(255,255,255,0.3)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:3}}>Active Dataset</div>
+          <div style={{fontSize:12,color:'rgba(255,255,255,0.8)',fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ds.name}</div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:1,fontFamily:'monospace'}}>{ds.rows?.length}r × {ds.columns?.length}c</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HOME
+═══════════════════════════════════════════════════════════ */
+function HomeModule({state,dispatch}){
+  function loadSample(k){
+    const s=SAMPLES[k];
+    dispatch({type:'ADD_DS',ds:{id:'ds_'+Date.now(),name:s.name,columns:s.cols,rows:s.rows,types:s.types,createdAt:Date.now()}});
+    dispatch({type:'SET_MODULE',m:'data'});
+  }
+  return(
+    <div className="fade-in" style={{padding:'32px',maxWidth:960,overflowY:'auto',height:'100%'}}>
+      <div style={{marginBottom:32}}>
+        <h1 style={{fontFamily:"'Crimson Pro',serif",fontSize:36,fontWeight:600,color:'var(--text)',lineHeight:1.1,letterSpacing:'-0.025em'}}>
+          A Scientific Analysis Suite<br/><span style={{color:'var(--gold)'}}>in Your Browser</span>
+        </h1>
+        <p style={{fontSize:14,color:'var(--text-muted)',marginTop:12,maxWidth:540,lineHeight:1.7}}>
+          StatLab Pro is a local-first statistical computing environment. Load data, run analyses, build visualizations, and export publication-ready outputs — all without sending your data anywhere.
+        </p>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:28}}>
+        {[{icon:'📂',title:'Import Data',desc:'CSV, TSV, JSON, or paste from any spreadsheet',m:'data'},{icon:'🔬',title:'Analysis Lab',desc:'t-tests, ANOVA, regression, correlation, and more',m:'analyze'},{icon:'📊',title:'Visualize',desc:'Interactive scatter, box, bar, histogram, heatmap',m:'visualize'}].map(item=>(
+          <div key={item.title} onClick={()=>dispatch({type:'SET_MODULE',m:item.m})} style={{background:'white',border:'1px solid var(--border)',borderRadius:11,padding:20,cursor:'pointer',transition:'all 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.borderColor='var(--blue)';e.currentTarget.style.boxShadow='0 4px 16px rgba(74,127,168,0.1)';}} onMouseLeave={e=>{e.currentTarget.style.borderColor='var(--border)';e.currentTarget.style.boxShadow='';}}>
+            <div style={{fontSize:30,marginBottom:10}}>{item.icon}</div>
+            <div style={{fontWeight:600,fontSize:14,marginBottom:5}}>{item.title}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',lineHeight:1.5}}>{item.desc}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:28}}>
+        <div style={{background:'white',border:'1px solid var(--border)',borderRadius:11,padding:20}}>
+          <div style={{fontWeight:600,fontSize:14,marginBottom:4}}>Sample Datasets</div>
+          <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14}}>Load a built-in dataset to explore all features immediately.</div>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            {Object.entries(SAMPLES).map(([k,s])=>(
+              <button key={k} className="btn btn-secondary btn-sm" onClick={()=>loadSample(k)}>
+                <span>📊</span>{s.name}
+                <span style={{color:'var(--text-light)',fontSize:11}}>({s.rows.length}×{s.cols.length})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{background:'white',border:'1px solid var(--border)',borderRadius:11,padding:20}}>
+          <div style={{fontWeight:600,fontSize:14,marginBottom:4}}>Session</div>
+          <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>
+            {state.datasets.length} dataset{state.datasets.length!==1?'s':''} · {state.analyses.length} analys{state.analyses.length!==1?'es':'is'} · Autosaved to IndexedDB
+          </div>
+          {state.datasets.length>0&&(
+            <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+              {state.datasets.slice(0,4).map(d=>(
+                <span key={d.id} onClick={()=>{dispatch({type:'SET_ACTIVE',id:d.id});dispatch({type:'SET_MODULE',m:'data'});}} className="pill pill-blue" style={{cursor:'pointer',fontSize:12,padding:'4px 10px'}}>
+                  {d.name}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{background:'white',border:'1px solid var(--border)',borderRadius:11,padding:20}}>
+        <div style={{fontWeight:600,fontSize:14,marginBottom:14}}>Capabilities</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+          {['Descriptive statistics with 95% CIs','One-sample, two-sample & paired t-tests','One-way ANOVA with Tukey HSD post-hoc','Pearson & Spearman correlation matrices','Multiple linear regression with diagnostics','Mann-Whitney U nonparametric test','Chi-square test of independence','Filter, mutate, rename, pivot longer/wider','Interactive charts (scatter, box, bar, histogram, heatmap, violin)','Export CSV, JSON, SVG, PNG, HTML report','Mixed-effects model UI architecture (LMM foundation)','Local IndexedDB persistence with autosave'].map(f=>(
+            <div key={f} style={{display:'flex',gap:8,fontSize:12,color:'var(--text-muted)',lineHeight:1.5}}>
+              <span style={{color:'var(--gold)',fontWeight:700,flexShrink:0,marginTop:1}}>✓</span>{f}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DATA MODULE
+═══════════════════════════════════════════════════════════ */
+function DataModule({state,dispatch}){
+  const[tab,setTab]=useState('grid');
+  const[drag,setDrag]=useState(false);
+  const[paste,setPaste]=useState('');
+  const[selCol,setSelCol]=useState(null);
+  const[sortCol,setSortCol]=useState(null);
+  const[sortDir,setSortDir]=useState('asc');
+  const[search,setSearch]=useState('');
+  const[page,setPage]=useState(0);
+  const PAGE=100;
+  const ds=state.datasets.find(d=>d.id===state.activeId);
+
+  function loadFile(file){
+    const rd=new FileReader();
+    rd.onload=e=>{
+      const parsed=parseText(e.target.result);
+      if(!parsed)return alert('Could not parse file. Ensure it has a header row.');
+      dispatch({type:'ADD_DS',ds:{id:'ds_'+Date.now(),name:file.name.replace(/\.[^.]+$/,''),columns:parsed.columns,rows:parsed.rows,types:parsed.types,createdAt:Date.now()}});
+      setTab('grid');
+    };
+    rd.readAsText(file);
+  }
+  function handlePaste(){
+    if(!paste.trim())return;
+    const parsed=parseText(paste);
+    if(!parsed)return alert('Could not parse. Ensure first row is headers.');
+    dispatch({type:'ADD_DS',ds:{id:'ds_'+Date.now(),name:'Pasted Data',columns:parsed.columns,rows:parsed.rows,types:parsed.types,createdAt:Date.now()}});
+    setPaste('');setTab('grid');
+  }
+
+  const dispRows=useMemo(()=>{
+    if(!ds)return[];
+    let rows=[...ds.rows];
+    if(search){const q=search.toLowerCase();rows=rows.filter(r=>Object.values(r).some(v=>String(v).toLowerCase().includes(q)));}
+    if(sortCol){rows.sort((a,b)=>{const va=a[sortCol],vb=b[sortCol];const na=Number(va),nb=Number(vb);const cmp=!isNaN(na)&&!isNaN(nb)?na-nb:String(va).localeCompare(String(vb));return sortDir==='asc'?cmp:-cmp;});}
+    return rows;
+  },[ds,search,sortCol,sortDir]);
+  const pageRows=dispRows.slice(page*PAGE,(page+1)*PAGE);
+  const totPg=Math.ceil(dispRows.length/PAGE);
+
+  const colStat=useMemo(()=>{
+    if(!ds||!selCol)return null;
+    if(ds.types[selCol]==='numeric'){const v=getNum(ds,selCol);return{type:'numeric',...describe(v)};}
+    const v=getVal(ds,selCol);const freq={};v.forEach(x=>{freq[x]=(freq[x]||0)+1;});
+    return{type:'text',n:v.length,missing:v.filter(x=>x===null||x===''||x===undefined).length,unique:Object.keys(freq).length,freq};
+  },[ds,selCol]);
+
+  if(!ds&&tab!=='import') return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <div className="module-header"><div className="module-title">Data Explorer</div><div className="module-subtitle">Import and inspect your datasets</div></div>
+      <div className="empty-state">
+        <div style={{fontSize:52,marginBottom:14,opacity:0.18}}>⊞</div>
+        <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:20,marginBottom:8}}>No Data Loaded</h3>
+        <p style={{color:'var(--text-muted)',fontSize:13,maxWidth:360,marginBottom:20,lineHeight:1.6}}>Import a CSV, TSV, or JSON file to begin. You can also paste directly from any spreadsheet.</p>
+        <button className="btn btn-primary" onClick={()=>setTab('import')}>Import Data</button>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <div className="module-header" style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
+        <div>
+          <div className="module-title">Data Explorer</div>
+          <div className="module-subtitle">{ds?`${ds.name} · ${ds.rows.length} rows × ${ds.columns.length} columns`:'Import and inspect your datasets'}</div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexShrink:0}}>
+          {state.datasets.length>1&&<select className="select-field" style={{fontSize:12}} value={state.activeId||''} onChange={e=>dispatch({type:'SET_ACTIVE',id:e.target.value})}>{state.datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select>}
+          <button className="btn btn-gold btn-sm" onClick={()=>setTab('import')}>+ Import</button>
+          {ds&&<button className="btn btn-secondary btn-sm" onClick={()=>dlCSV(ds.rows,ds.name+'.csv')}>Export CSV</button>}
+          {ds&&<button className="btn btn-secondary btn-sm" onClick={()=>{if(window.confirm(`Delete "${ds.name}"?`))dispatch({type:'DEL_DS',id:ds.id});}}>Delete</button>}
+        </div>
+      </div>
+      <div style={{padding:'6px 20px 0',borderBottom:'1px solid var(--border)',background:'white',display:'flex',gap:4,alignItems:'center'}}>
+        {['grid','inspect','import'].map(t=><button key={t} className={`tab-btn${tab===t?' active':''}`} onClick={()=>setTab(t)} style={{fontSize:12,padding:'5px 12px'}}>{t==='grid'?'Data Grid':t==='inspect'?'Column Inspector':'Import'}</button>)}
+        {ds&&tab==='grid'&&(
+          <div style={{marginLeft:'auto',paddingBottom:6}}>
+            <input className="input-field" placeholder="Search rows…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} style={{width:200,height:28,padding:'3px 10px',fontSize:12}}/>
+          </div>
+        )}
+      </div>
+      <div style={{flex:1,overflow:'hidden',display:'flex'}}>
+        {tab==='grid'&&ds&&(
+          <>
+            <div style={{flex:1,overflowX:'auto',overflowY:'auto'}}>
+              <table className="data-grid">
+                <thead>
+                  <tr>
+                    <th style={{width:44,textAlign:'right',color:'rgba(255,255,255,0.35)',cursor:'default',fontSize:10}}>#</th>
+                    {ds.columns.map(col=>(
+                      <th key={col} onClick={()=>{setSelCol(col);setSortCol(c=>c===col?c:col);setSortDir(d=>sortCol===col?d==='asc'?'desc':'asc':'asc');}}>
+                        <div style={{display:'flex',alignItems:'center',gap:5}}>
+                          <span style={{fontSize:9,padding:'1px 4px',borderRadius:3,background:ds.types[col]==='numeric'?'rgba(99,179,237,0.2)':'rgba(252,211,77,0.2)',color:ds.types[col]==='numeric'?'#93C5FD':'#FCD34D',fontFamily:'monospace'}}>{ds.types[col]==='numeric'?'123':'abc'}</span>
+                          {col}{sortCol===col&&<span style={{color:'var(--gold)',fontSize:10}}>{sortDir==='asc'?'↑':'↓'}</span>}
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((row,i)=>(
+                    <tr key={row.id??i}>
+                      <td style={{color:'var(--text-light)',textAlign:'right',fontSize:10,background:'rgba(247,246,242,0.8)'}}>{page*PAGE+i+1}</td>
+                      {ds.columns.map(col=>(
+                        <td key={col} style={{textAlign:ds.types[col]==='numeric'?'right':'left',color:row[col]===''||row[col]===null||row[col]===undefined?'#D1D5DB':'inherit'}}>
+                          {row[col]===''||row[col]===null||row[col]===undefined?<span style={{fontSize:10}}>∅</span>:String(row[col])}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {totPg>1&&(
+                <div style={{padding:'10px 16px',display:'flex',alignItems:'center',gap:12,borderTop:'1px solid var(--border)',background:'white',position:'sticky',bottom:0}}>
+                  <button className="btn btn-secondary btn-xs" disabled={page===0} onClick={()=>setPage(p=>p-1)}>← Prev</button>
+                  <span style={{fontSize:12,color:'var(--text-muted)'}}>Page {page+1}/{totPg} · {dispRows.length} rows shown</span>
+                  <button className="btn btn-secondary btn-xs" disabled={page>=totPg-1} onClick={()=>setPage(p=>p+1)}>Next →</button>
+                </div>
+              )}
+            </div>
+            {selCol&&colStat&&(
+              <div style={{width:232,borderLeft:'1px solid var(--border)',overflowY:'auto',background:'var(--paper)',flexShrink:0}}>
+                <div style={{padding:14}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                    <div style={{fontWeight:600,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{selCol}</div>
+                    <button onClick={()=>setSelCol(null)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',fontSize:16,lineHeight:1}}>×</button>
+                  </div>
+                  <span className={`pill ${colStat.type==='numeric'?'pill-blue':'pill-amber'}`} style={{marginBottom:12,display:'inline-flex'}}>{colStat.type}</span>
+                  {colStat.type==='numeric'?(
+                    <div style={{fontSize:12}}>
+                      {[['n',colStat.n],['Missing',colStat.missing],['Mean',fmt(colStat.mean)],['Median',fmt(colStat.median)],['Std Dev',fmt(colStat.sd)],['Std Error',fmt(colStat.se)],['Min',fmt(colStat.min)],['Max',fmt(colStat.max)],['Q1',fmt(colStat.q1)],['Q3',fmt(colStat.q3)],['IQR',fmt(colStat.iqr)],['Skewness',fmt(colStat.skewness,3)],['Excess Kurt.',fmt(colStat.kurtosis,3)]].map(([k,v])=>(
+                        <div key={k} style={{display:'flex',justifyContent:'space-between',padding:'4px 0',borderBottom:'1px solid var(--border)'}}>
+                          <span style={{color:'var(--text-muted)'}}>{k}</span>
+                          <span style={{fontFamily:'monospace',fontSize:12}}>{v}</span>
+                        </div>
+                      ))}
+                      <div style={{marginTop:10,padding:'8px 10px',background:'rgba(74,127,168,0.08)',borderRadius:7,fontSize:11,color:'var(--blue)',fontFamily:'monospace'}}>
+                        95% CI: [{fmt(colStat.ci95_lo,3)}, {fmt(colStat.ci95_hi,3)}]
+                      </div>
+                    </div>
+                  ):(
+                    <div>
+                      <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>{colStat.unique} unique · {colStat.n} total · {colStat.missing} missing</div>
+                      {Object.entries(colStat.freq).sort((a,b)=>b[1]-a[1]).slice(0,12).map(([v,c])=>(
+                        <div key={v} style={{marginBottom:5,fontSize:12}}>
+                          <div style={{display:'flex',justifyContent:'space-between',marginBottom:2}}>
+                            <span style={{fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>{v}</span>
+                            <span style={{fontFamily:'monospace',color:'var(--text-muted)',flexShrink:0,marginLeft:8}}>{c}</span>
+                          </div>
+                          <div style={{background:'var(--border)',borderRadius:2,height:3}}><div style={{background:'var(--blue)',borderRadius:2,height:3,width:`${(c/colStat.n)*100}%`}}/></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        {tab==='inspect'&&ds&&(
+          <div style={{overflowY:'auto',padding:24,flex:1}}>
+            <div style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:16}}>{ds.name} — Variable Summary</div>
+            <table className="result-table">
+              <thead><tr><th>Column</th><th>Type</th><th>n</th><th>Missing</th><th>Mean / Mode</th><th>SD / Unique</th><th>Min</th><th>Median</th><th>Max</th></tr></thead>
+              <tbody>
+                {ds.columns.map(col=>{
+                  if(ds.types[col]==='numeric'){
+                    const v=getNum(ds,col);const s=describe(v);
+                    return(<tr key={col} onClick={()=>setSelCol(col)} style={{cursor:'pointer'}}>
+                      <td style={{fontWeight:600}}>{col}</td><td><span className="pill pill-blue">numeric</span></td>
+                      <td>{s.n}</td><td style={{color:s.missing>0?'var(--danger)':'inherit'}}>{s.missing}</td>
+                      <td>{fmt(s.mean,3)}</td><td>{fmt(s.sd,3)}</td><td>{fmt(s.min,3)}</td><td>{fmt(s.median,3)}</td><td>{fmt(s.max,3)}</td>
+                    </tr>);
+                  }
+                  const v=getVal(ds,col);const freq={};v.forEach(x=>{freq[x]=(freq[x]||0)+1;});
+                  const miss=v.filter(x=>x===null||x==='').length;
+                  const top=Object.entries(freq).filter(([k])=>k!=='').sort((a,b)=>b[1]-a[1])[0];
+                  return(<tr key={col} onClick={()=>setSelCol(col)} style={{cursor:'pointer'}}>
+                    <td style={{fontWeight:600}}>{col}</td><td><span className="pill pill-amber">text</span></td>
+                    <td>{v.length-miss}</td><td style={{color:miss>0?'var(--danger)':'inherit'}}>{miss}</td>
+                    <td style={{fontFamily:'inherit'}}>{top?`"${top[0]}" (${top[1]})`:'—'}</td>
+                    <td>{Object.keys(freq).filter(k=>k!=='').length}</td>
+                    <td>—</td><td>—</td><td>—</td>
+                  </tr>);
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {tab==='import'&&(
+          <div style={{overflowY:'auto',padding:24,flex:1,maxWidth:680}}>
+            <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:20,fontWeight:600,marginBottom:20}}>Import Data</h3>
+            <div className={`drop-zone${drag?' drag':''}`} onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)} onDrop={e=>{e.preventDefault();setDrag(false);const f=e.dataTransfer.files[0];if(f)loadFile(f);}} onClick={()=>document.getElementById('fi').click()} style={{marginBottom:24}}>
+              <div style={{fontSize:36,marginBottom:12}}>📁</div>
+              <div style={{fontWeight:600,fontSize:14,marginBottom:4}}>Drop file here or click to browse</div>
+              <div style={{color:'var(--text-muted)',fontSize:13}}>CSV, TSV, TXT (with header row)</div>
+              <input id="fi" type="file" accept=".csv,.tsv,.txt" style={{display:'none'}} onChange={e=>{if(e.target.files[0])loadFile(e.target.files[0]);}}/>
+            </div>
+            <div style={{marginBottom:24}}>
+              <div style={{fontWeight:600,fontSize:14,marginBottom:4}}>Paste from Clipboard</div>
+              <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>Paste data copied from Excel, Google Sheets, or any tab/comma-separated source. First row must be column names.</div>
+              <textarea value={paste} onChange={e=>setPaste(e.target.value)} placeholder="id,group,value&#10;1,A,4.5&#10;2,B,3.2…" style={{width:'100%',height:130,border:'1px solid var(--border)',borderRadius:8,padding:12,fontFamily:'monospace',fontSize:12,resize:'vertical',outline:'none'}}/>
+              <button className="btn btn-primary btn-sm" onClick={handlePaste} style={{marginTop:8}}>Parse & Load</button>
+            </div>
+            <div style={{background:'white',border:'1px solid var(--border)',borderRadius:10,padding:18}}>
+              <div style={{fontWeight:600,fontSize:14,marginBottom:10}}>Built-in Sample Datasets</div>
+              <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                {Object.entries(SAMPLES).map(([k,s])=>(
+                  <button key={k} className="btn btn-secondary btn-sm" onClick={()=>{
+                    dispatch({type:'ADD_DS',ds:{id:'ds_'+Date.now(),name:s.name,columns:s.cols,rows:s.rows,types:s.types,createdAt:Date.now()}});
+                    setTab('grid');
+                  }}><span>📊</span>{s.name}<span style={{color:'var(--text-light)',fontSize:11}}>({s.rows.length}×{s.cols.length})</span></button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CLEAN MODULE
+═══════════════════════════════════════════════════════════ */
+function CleanModule({state,dispatch}){
+  const[tab,setTab]=useState('filter');
+  const[conds,setConds]=useState([{col:'',op:'==',val:''}]);
+  const[mutate,setMutate]=useState({name:'',expr:''});
+  const[renameMap,setRenameMap]=useState({});
+  const[pivot,setPivot]=useState({cols:[],namesTo:'name',valuesTo:'value'});
+  const ds=state.datasets.find(d=>d.id===state.activeId);
+  if(!ds)return(<div style={{display:'flex',flexDirection:'column',height:'100%'}}><div className="module-header"><div className="module-title">Data Workshop</div></div><div className="empty-state"><div style={{fontSize:48,opacity:0.2}}>⚙</div><p style={{color:'var(--text-muted)'}}>Load a dataset first.</p></div></div>);
+
+  function applyFilter(){
+    const v=conds.filter(c=>c.col&&c.op);const frows=filterRows(ds.rows,v);
+    dispatch({type:'ADD_DS',ds:{id:'ds_'+Date.now(),name:ds.name+'_filtered',columns:ds.columns,rows:frows.map((r,i)=>({...r,id:i})),types:ds.types,createdAt:Date.now()}});
+    alert(`New dataset created: ${frows.length} rows`);
+  }
+  function applyMutate(){
+    if(!mutate.name||!mutate.expr)return;
+    try{
+      const newRows=ds.rows.map(row=>{
+        let expr=mutate.expr;
+        ds.columns.forEach(c=>{expr=expr.replace(new RegExp(`\\b${c}\\b`,'g'),`row['${c}']`);});
+        const val=Function('row','Math',`"use strict";return ${expr}`)(row,Math);
+        return{...row,[mutate.name]:val};
+      });
+      const newTypes={...ds.types,[mutate.name]:inferType(newRows.map(r=>r[mutate.name]))};
+      const newCols=ds.columns.includes(mutate.name)?ds.columns:[...ds.columns,mutate.name];
+      dispatch({type:'UPD_DS',id:ds.id,up:{rows:newRows,columns:newCols,types:newTypes}});
+      setMutate({name:'',expr:''});
+      alert(`Column "${mutate.name}" added successfully.`);
+    }catch(e){alert('Expression error: '+e.message);}
+  }
+  function applyRename(){
+    const newTypes={};const newCols=ds.columns.map(c=>{const n=renameMap[c]||c;newTypes[n]=ds.types[c];return n;});
+    const newRows=ds.rows.map(r=>{const nr={id:r.id};ds.columns.forEach(c=>{nr[renameMap[c]||c]=r[c];});return nr;});
+    dispatch({type:'UPD_DS',id:ds.id,up:{columns:newCols,rows:newRows,types:newTypes}});
+    setRenameMap({});alert('Columns renamed.');
+  }
+  function applyPivotLonger(){
+    if(!pivot.cols.length)return;
+    const idCols=ds.columns.filter(c=>!pivot.cols.includes(c));
+    const newRows=pivotLonger(ds.rows,pivot.cols,pivot.namesTo,pivot.valuesTo,idCols);
+    const newCols=[...idCols,pivot.namesTo,pivot.valuesTo];
+    const newTypes={};idCols.forEach(c=>newTypes[c]=ds.types[c]);newTypes[pivot.namesTo]='text';newTypes[pivot.valuesTo]=inferType(newRows.map(r=>r[pivot.valuesTo]));
+    dispatch({type:'ADD_DS',ds:{id:'ds_'+Date.now(),name:ds.name+'_long',columns:newCols,rows:newRows.map((r,i)=>({...r,id:i})),types:newTypes,createdAt:Date.now()}});
+    alert(`Long-format dataset created: ${newRows.length} rows`);
+  }
+  function dropMissing(targetCols){
+    const newRows=ds.rows.filter(r=>targetCols.every(c=>r[c]!==null&&r[c]!==undefined&&r[c]!==''));
+    dispatch({type:'ADD_DS',ds:{id:'ds_'+Date.now(),name:ds.name+'_clean',columns:ds.columns,rows:newRows.map((r,i)=>({...r,id:i})),types:ds.types,createdAt:Date.now()}});
+    alert(`New dataset created: dropped ${ds.rows.length-newRows.length} rows with missing values.`);
+  }
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <div className="module-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div><div className="module-title">Data Workshop</div><div className="module-subtitle">Transform, filter, and reshape your data</div></div>
+        {state.datasets.length>1&&<select className="select-field" style={{fontSize:12}} value={state.activeId||''} onChange={e=>dispatch({type:'SET_ACTIVE',id:e.target.value})}>{state.datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select>}
+      </div>
+      <div style={{padding:'6px 20px 0',borderBottom:'1px solid var(--border)',background:'white',display:'flex',gap:4}}>
+        {['filter','mutate','rename','reshape','missing'].map(t=><button key={t} className={`tab-btn${tab===t?' active':''}`} onClick={()=>setTab(t)} style={{fontSize:12,padding:'5px 12px'}}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>)}
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:24}}>
+        {tab==='filter'&&(
+          <div style={{maxWidth:700}}>
+            <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:18,fontWeight:600,marginBottom:4}}>Filter Rows</h3>
+            <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:20,lineHeight:1.6}}>Apply conditions to keep matching rows. Creates a new dataset.</p>
+            {conds.map((c,i)=>(
+              <div key={i} style={{display:'flex',gap:8,marginBottom:10,alignItems:'center'}}>
+                <span style={{fontSize:12,color:'var(--text-muted)',width:32,textAlign:'center',flexShrink:0}}>{i===0?'IF':'AND'}</span>
+                <select className="select-field" value={c.col} onChange={e=>setConds(cs=>cs.map((x,j)=>j===i?{...x,col:e.target.value}:x))} style={{flex:1,fontSize:12}}>
+                  <option value="">Column…</option>{ds.columns.map(col=><option key={col} value={col}>{col}</option>)}
+                </select>
+                <select className="select-field" value={c.op} onChange={e=>setConds(cs=>cs.map((x,j)=>j===i?{...x,op:e.target.value}:x))} style={{width:140,fontSize:12}}>
+                  {[['==','equals'],['!=','≠'],['>',' >'],[' <','<'],['>=','≥'],['<=','≤'],['contains','contains'],['is_missing','is missing'],['not_missing','not missing']].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+                {!['is_missing','not_missing'].includes(c.op)&&<input className="input-field" value={c.val} onChange={e=>setConds(cs=>cs.map((x,j)=>j===i?{...x,val:e.target.value}:x))} placeholder="Value" style={{flex:1,fontSize:12}}/>}
+                <button onClick={()=>setConds(cs=>cs.filter((_,j)=>j!==i))} style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',fontSize:18,lineHeight:1,padding:'0 4px'}}>×</button>
+              </div>
+            ))}
+            <div style={{display:'flex',gap:10,marginTop:12}}>
+              <button className="btn btn-secondary btn-sm" onClick={()=>setConds(cs=>[...cs,{col:'',op:'==',val:''}])}>+ Condition</button>
+              <button className="btn btn-primary btn-sm" onClick={applyFilter}>Apply Filter → New Dataset</button>
+            </div>
+          </div>
+        )}
+        {tab==='mutate'&&(
+          <div style={{maxWidth:620}}>
+            <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:18,fontWeight:600,marginBottom:4}}>Compute New Variable</h3>
+            <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:20,lineHeight:1.6}}>Create a new column using an expression. Reference columns by name. Use <code>Math.log</code>, <code>Math.sqrt</code>, etc.</p>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:13,fontWeight:500,display:'block',marginBottom:5}}>New Column Name</label>
+              <input className="input-field" value={mutate.name} onChange={e=>setMutate(m=>({...m,name:e.target.value}))} placeholder="e.g. log_weight" style={{width:280}}/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:13,fontWeight:500,display:'block',marginBottom:5}}>Expression</label>
+              <input className="input-field" value={mutate.expr} onChange={e=>setMutate(m=>({...m,expr:e.target.value}))} placeholder={`e.g. Math.log(${ds.columns[0]}) or ${ds.columns[0]} / ${ds.columns[1]||'100'}`} style={{width:'100%',fontFamily:'monospace',fontSize:12}}/>
+              <div style={{fontSize:11,color:'var(--text-muted)',marginTop:5}}>Available: {ds.columns.join(', ')}</div>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={applyMutate}>Compute & Add Column</button>
+            <div style={{marginTop:20,padding:14,background:'white',border:'1px solid var(--border)',borderRadius:9}}>
+              <div style={{fontSize:13,fontWeight:600,marginBottom:8}}>Examples</div>
+              {[[`Math.log(${ds.columns[0]})`,'log transform'],[`Math.sqrt(${ds.columns[0]})`,'square root'],[`${ds.columns[0]} / (${ds.columns[1]||ds.columns[0]})`,'ratio'],[`Math.round(${ds.columns[0]} * 100) / 100`,'round to 2 dp']].map(([ex,name])=>(
+                <div key={name} onClick={()=>setMutate(m=>({...m,expr:ex}))} style={{fontSize:12,marginBottom:5,cursor:'pointer',display:'flex',gap:10}}>
+                  <span style={{color:'var(--gold)',fontWeight:700,flexShrink:0}}>→</span>
+                  <code style={{color:'var(--blue)',fontFamily:'monospace'}}>{ex}</code>
+                  <span style={{color:'var(--text-muted)'}}>{name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {tab==='rename'&&(
+          <div style={{maxWidth:500}}>
+            <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:18,fontWeight:600,marginBottom:4}}>Rename Columns</h3>
+            <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:20}}>Edit names below. Leave blank to keep original.</p>
+            {ds.columns.map(col=>(
+              <div key={col} style={{display:'flex',alignItems:'center',gap:14,marginBottom:10}}>
+                <span style={{fontFamily:'monospace',fontSize:12,width:160,color:'var(--text-muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flexShrink:0}}>{col}</span>
+                <span style={{color:'var(--text-muted)'}}>→</span>
+                <input className="input-field" value={renameMap[col]||''} onChange={e=>setRenameMap(m=>({...m,[col]:e.target.value}))} placeholder={col} style={{width:200,fontSize:12}}/>
+              </div>
+            ))}
+            <button className="btn btn-primary btn-sm" onClick={applyRename} style={{marginTop:8}}>Apply Renames</button>
+          </div>
+        )}
+        {tab==='reshape'&&(
+          <div style={{maxWidth:700}}>
+            <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:18,fontWeight:600,marginBottom:4}}>Reshape: Pivot Longer</h3>
+            <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:20,lineHeight:1.6}}>Select "value" columns to gather — transforms wide format to long (tidy) format. ID columns remain fixed.</p>
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:13,fontWeight:500,display:'block',marginBottom:8}}>Value Columns to Pivot</label>
+              <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                {ds.columns.map(col=>(
+                  <label key={col} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 11px',background:pivot.cols.includes(col)?'var(--navy)':'white',color:pivot.cols.includes(col)?'white':'inherit',border:'1px solid',borderColor:pivot.cols.includes(col)?'var(--navy)':'var(--border)',borderRadius:7,cursor:'pointer',fontSize:12,transition:'all 0.12s'}}>
+                    <input type="checkbox" checked={pivot.cols.includes(col)} onChange={e=>setPivot(p=>({...p,cols:e.target.checked?[...p.cols,col]:p.cols.filter(x=>x!==col)}))} style={{display:'none'}}/>
+                    {col}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:14,marginBottom:16}}>
+              <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:5}}>Names Column</label><input className="input-field" value={pivot.namesTo} onChange={e=>setPivot(p=>({...p,namesTo:e.target.value}))} style={{width:160,fontSize:12}}/></div>
+              <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:5}}>Values Column</label><input className="input-field" value={pivot.valuesTo} onChange={e=>setPivot(p=>({...p,valuesTo:e.target.value}))} style={{width:160,fontSize:12}}/></div>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={applyPivotLonger} disabled={!pivot.cols.length}>Pivot Longer → New Dataset</button>
+            <div style={{marginTop:16,padding:12,background:'rgba(74,127,168,0.06)',borderRadius:8,fontSize:12,color:'var(--blue)'}}>
+              ID columns (unchanged): {ds.columns.filter(c=>!pivot.cols.includes(c)).join(', ')||'none'}
+            </div>
+          </div>
+        )}
+        {tab==='missing'&&(
+          <div style={{maxWidth:600}}>
+            <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:18,fontWeight:600,marginBottom:4}}>Missing Value Diagnostics</h3>
+            <p style={{fontSize:13,color:'var(--text-muted)',marginBottom:20}}>Inspect and handle missing data before analysis.</p>
+            <table className="result-table" style={{marginBottom:20}}>
+              <thead><tr><th>Column</th><th>Missing n</th><th>Missing %</th><th>Action</th></tr></thead>
+              <tbody>
+                {ds.columns.map(col=>{
+                  const tot=ds.rows.length;const miss=ds.rows.filter(r=>r[col]===null||r[col]===undefined||r[col]==='').length;
+                  return(<tr key={col}>
+                    <td style={{fontWeight:500}}>{col}</td>
+                    <td style={{color:miss>0?'var(--danger)':'var(--success)',fontWeight:miss>0?600:400}}>{miss}</td>
+                    <td style={{color:miss>0?'var(--danger)':'var(--text-muted)'}}>{(miss/tot*100).toFixed(1)}%</td>
+                    <td>{miss>0&&<button className="btn btn-secondary btn-xs" onClick={()=>dropMissing([col])}>Drop rows for this col</button>}</td>
+                  </tr>);
+                })}
+              </tbody>
+            </table>
+            <button className="btn btn-primary btn-sm" onClick={()=>dropMissing(ds.columns)}>Drop All Rows with Any Missing → New Dataset</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DRAG-AND-DROP VARIABLE PANEL
+═══════════════════════════════════════════════════════════ */
+// slotDefs: [{key, label, hint, multi?, types?}]
+// values: {key: colName | null}
+// onChange: fn(newValues)
+function DragVarPanel({ds, slotDefs, values, onChange}){
+  const[dragging,setDragging]=useState(null); // {col, fromSlot}
+  const[overSlot,setOverSlot]=useState(null);
+
+  const assigned=Object.values(values).filter(Boolean).flat();
+  const available=ds?ds.columns.filter(c=>!assigned.includes(c)):[];
+
+  function onDragStart(e,col,fromSlot=null){
+    setDragging({col,fromSlot});
+    e.dataTransfer.effectAllowed='move';
+    e.dataTransfer.setData('text/plain',col);
+  }
+  function onDropSlot(e,slotKey){
+    e.preventDefault();
+    if(!dragging)return;
+    const def=slotDefs.find(s=>s.key===slotKey);
+    if(def?.types&&!def.types.includes(ds.types[dragging.col])){
+      setOverSlot(null);setDragging(null);return;
+    }
+    const next={...values};
+    if(dragging.fromSlot&&dragging.fromSlot!=='pool')next[dragging.fromSlot]=null;
+    next[slotKey]=dragging.col;
+    onChange(next);
+    setOverSlot(null);setDragging(null);
+  }
+  function onDropPool(e){
+    e.preventDefault();
+    if(dragging?.fromSlot&&dragging.fromSlot!=='pool'){
+      onChange({...values,[dragging.fromSlot]:null});
+    }
+    setOverSlot(null);setDragging(null);
+  }
+
+  const chipClass=(col)=>`var-chip ${ds&&ds.types[col]==='numeric'?'num':'cat'}${dragging?.col===col&&dragging?.fromSlot==='pool'?' dragging':''}`;
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+      {/* Variable Pool */}
+      <div>
+        <div style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Variables — drag to slots below</div>
+        <div
+          className={`var-pool${overSlot==='pool'?' over':''}`}
+          onDragOver={e=>{e.preventDefault();setOverSlot('pool');}}
+          onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOverSlot(null);}}
+          onDrop={onDropPool}
+        >
+          {available.map(col=>(
+            <div key={col} className={chipClass(col)}
+              draggable onDragStart={e=>onDragStart(e,col,'pool')} onDragEnd={()=>setDragging(null)}
+              title={`${col} · ${ds.types[col]}`}
+            >
+              <span className="var-badge">{ds.types[col]==='numeric'?'#':'T'}</span>{col}
+            </div>
+          ))}
+          {!available.length&&<span style={{fontSize:11,color:'var(--text-light)',fontStyle:'italic',padding:'2px 4px'}}>All variables assigned</span>}
+        </div>
+      </div>
+      {/* Drop Slots */}
+      {slotDefs.map(def=>{
+        const val=values[def.key];
+        const isOver=overSlot===def.key;
+        return(
+          <div key={def.key}>
+            <div style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:5,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              {def.label}
+              {def.types&&<span style={{fontWeight:400,color:'var(--text-light)',fontSize:9,background:'var(--paper-dark)',padding:'1px 5px',borderRadius:4}}>{def.types.join(' · ')}</span>}
+            </div>
+            <div
+              className={`drop-slot${isOver?' over':''}${val?' filled':''}`}
+              style={{background:isOver?'rgba(74,127,168,0.05)':val?'white':'rgba(247,246,242,0.6)'}}
+              onDragOver={e=>{e.preventDefault();setOverSlot(def.key);}}
+              onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOverSlot(null);}}
+              onDrop={e=>onDropSlot(e,def.key)}
+            >
+              {val?(
+                <div className={`var-chip ${ds.types[val]==='numeric'?'num':'cat'}`}
+                  draggable onDragStart={e=>onDragStart(e,val,def.key)} onDragEnd={()=>setDragging(null)}
+                >
+                  <span className="var-badge">{ds.types[val]==='numeric'?'#':'T'}</span>
+                  {val}
+                  <span onClick={()=>onChange({...values,[def.key]:null})} style={{marginLeft:5,cursor:'pointer',opacity:0.45,fontSize:14,lineHeight:1}}>×</span>
+                </div>
+              ):(
+                <span className="slot-hint">{def.hint||`Drop ${def.label}`}</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VISUALIZE MODULE
+═══════════════════════════════════════════════════════════ */
+function VisualizeModule({state,dispatch}){
+  const[cfg,setCfg]=useState({type:'scatter',x:'',y:'',color:'',title:''});
+  const[rendered,setRendered]=useState(false);
+  const chartRef=useRef(null);
+  const ds=state.datasets.find(d=>d.id===state.activeId);
+  const nc=ds?numCols(ds):[];const cc=ds?catCols(ds):[];const ac=ds?ds.columns:[];
+  const PALETTE=['#4A7FA8','#C8903E','#22C55E','#EF4444','#8B5CF6','#EC4899','#14B8A6','#F97316','#06B6D4','#84CC16'];
+
+  useEffect(()=>{if(ds&&cfg.x&&chartRef.current)renderChart();},[cfg,state.activeId]);
+
+  function renderChart(){
+    if(!ds||!cfg.x||!chartRef.current)return;
+    const{type,x,y,color,title}=cfg;
+    const layout={
+      title:{text:title||(type+': '+x+(y?' vs '+y:'')),font:{family:'Outfit,sans-serif',size:13}},
+      paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',
+      font:{family:'Outfit,sans-serif',size:11},
+      margin:{l:50,r:20,t:48,b:48},
+      xaxis:{title:x,gridcolor:'#E8E6E1',linecolor:'#D5D2CC',zeroline:false},
+      yaxis:{title:y||'',gridcolor:'#E8E6E1',linecolor:'#D5D2CC',zeroline:false},
+      legend:{bgcolor:'rgba(0,0,0,0)',font:{size:11}},
+      hoverlabel:{font:{family:'Outfit,sans-serif',size:11}},
+    };
+    const colorGroups=color&&ds.types[color]!=='numeric'?[...new Set(ds.rows.map(r=>r[color]).filter(Boolean))]:[null];
+    let traces=[];
+    if(type==='scatter'){
+      colorGroups.forEach((g,gi)=>{
+        const rows=g!==null?ds.rows.filter(r=>r[color]==g):ds.rows;
+        traces.push({type:'scatter',mode:'markers',x:rows.map(r=>Number(r[x])),y:y?rows.map(r=>Number(r[y])):undefined,name:g||'',marker:{color:PALETTE[gi%PALETTE.length],size:7,opacity:0.72,line:{width:0.5,color:'white'}},hovertemplate:`${x}: %{x}<br>${y}: %{y}<extra>${g||''}</extra>`});
+      });
+    }else if(type==='histogram'){
+      colorGroups.forEach((g,gi)=>{
+        const rows=g!==null?ds.rows.filter(r=>r[color]==g):ds.rows;
+        traces.push({type:'histogram',x:rows.map(r=>Number(r[x])),name:g||x,opacity:0.75,marker:{color:PALETTE[gi%PALETTE.length]}});
+      });
+      layout.barmode='overlay';
+    }else if(type==='box'){
+      if(color&&ds.types[color]!=='numeric'){
+        colorGroups.forEach((g,gi)=>{traces.push({type:'box',y:ds.rows.filter(r=>r[color]==g).map(r=>Number(r[x])),name:String(g),marker:{color:PALETTE[gi%PALETTE.length]},boxpoints:'outliers',jitter:0.3,line:{width:1.5}});});
+      }else if(y){
+        const grps=[...new Set(ds.rows.map(r=>r[y]).filter(Boolean))];
+        grps.forEach((g,gi)=>traces.push({type:'box',y:ds.rows.filter(r=>r[y]==g).map(r=>Number(r[x])),name:String(g),marker:{color:PALETTE[gi%PALETTE.length]},boxpoints:'outliers',jitter:0.3}));
+      }else{
+        traces.push({type:'box',y:ds.rows.map(r=>Number(r[x])),name:x,marker:{color:PALETTE[0]},boxpoints:'outliers'});
+      }
+    }else if(type==='bar'){
+      if(y){
+        colorGroups.forEach((g,gi)=>{
+          const rows=g!==null?ds.rows.filter(r=>r[color]==g):ds.rows;
+          traces.push({type:'bar',x:rows.map(r=>r[x]),y:rows.map(r=>Number(r[y])),name:g||y,marker:{color:PALETTE[gi%PALETTE.length],opacity:0.85}});
+        });
+      }else{
+        const freq={};ds.rows.forEach(r=>{freq[r[x]]=(freq[r[x]]||0)+1;});
+        const s=Object.entries(freq).sort((a,b)=>b[1]-a[1]);
+        traces.push({type:'bar',x:s.map(e=>e[0]),y:s.map(e=>e[1]),name:'Count',marker:{color:PALETTE[0],opacity:0.85}});
+        layout.yaxis.title='Count';
+      }
+    }else if(type==='line'){
+      colorGroups.forEach((g,gi)=>{
+        const rows=(g!==null?ds.rows.filter(r=>r[color]==g):ds.rows).sort((a,b)=>Number(a[x])-Number(b[x]));
+        traces.push({type:'scatter',mode:'lines+markers',x:rows.map(r=>r[x]),y:y?rows.map(r=>Number(r[y])):undefined,name:g||y,line:{color:PALETTE[gi%PALETTE.length],width:2},marker:{size:5}});
+      });
+    }else if(type==='heatmap'){
+      const hcols=nc.slice(0,8);
+      const cr=corrMatrix(ds.rows,hcols,'pearson');
+      const z=cr.matrix.map(row=>row.map(c=>c.r));
+      traces.push({type:'heatmap',z,x:hcols,y:hcols,colorscale:[['0','#2166AC'],['0.5','white'],['1','#D73027']],zmid:0,zmin:-1,zmax:1,text:z.map(r=>r.map(v=>v.toFixed(2))),texttemplate:'%{text}',hovertemplate:'%{x} × %{y}: %{z:.3f}<extra></extra>'});
+      layout.title.text='Correlation Heatmap';
+    }else if(type==='violin'){
+      colorGroups.forEach((g,gi)=>{
+        const rows=g!==null?ds.rows.filter(r=>r[color]==g):ds.rows;
+        traces.push({type:'violin',y:rows.map(r=>Number(r[x])),name:g||x,box:{visible:true},meanline:{visible:true},line:{color:PALETTE[gi%PALETTE.length]},opacity:0.8,points:'outliers'});
+      });
+    }
+    Plotly.react(chartRef.current,traces,layout,{responsive:true,displayModeBar:true,displaylogo:false,modeBarButtonsToRemove:['sendDataToCloud','editInChartStudio']});
+    setRendered(true);
+  }
+
+  function dlChart(fmt){if(!chartRef.current)return;Plotly.downloadImage(chartRef.current,{format:fmt,filename:'statlab_chart',width:1400,height:900});}
+
+  if(!ds)return(<div style={{display:'flex',flexDirection:'column',height:'100%'}}><div className="module-header"><div className="module-title">Visualization Studio</div></div><div className="empty-state"><div style={{fontSize:48,opacity:0.18}}>◈</div><p style={{color:'var(--text-muted)'}}>Load a dataset first.</p></div></div>);
+
+  const CHART_TYPES=[{id:'scatter',l:'Scatter'},{id:'histogram',l:'Histogram'},{id:'box',l:'Box Plot'},{id:'bar',l:'Bar Chart'},{id:'line',l:'Line'},{id:'heatmap',l:'Correlation Heatmap'},{id:'violin',l:'Violin'}];
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <div className="module-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div><div className="module-title">Visualization Studio</div><div className="module-subtitle">Build interactive, exportable charts</div></div>
+        {state.datasets.length>1&&<select className="select-field" style={{fontSize:12}} value={state.activeId||''} onChange={e=>dispatch({type:'SET_ACTIVE',id:e.target.value})}>{state.datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select>}
+      </div>
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        <div className="side-panel" style={{width:230}}>
+          <div className="section-head" style={{paddingLeft:0}}>Chart Type</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:4,marginBottom:16}}>
+            {CHART_TYPES.map(ct=>(
+              <button key={ct.id} onClick={()=>setCfg(c=>({...c,type:ct.id}))} style={{padding:'7px 4px',fontSize:11,border:'1px solid',fontFamily:"'Outfit',sans-serif",fontWeight:500,cursor:'pointer',borderRadius:6,transition:'all 0.12s',borderColor:cfg.type===ct.id?'var(--navy)':'var(--border)',background:cfg.type===ct.id?'var(--navy)':'white',color:cfg.type===ct.id?'white':'inherit'}}>{ct.l}</button>
+            ))}
+          </div>
+          <div className="section-head" style={{paddingLeft:0}}>Variables</div>
+          {cfg.type!=='heatmap'&&(
+            <DragVarPanel
+              ds={ds}
+              slotDefs={[
+                {key:'x',label:'X Axis',hint:'Drop a variable here',types:cfg.type==='histogram'||cfg.type==='box'||cfg.type==='violin'?['numeric']:null},
+                {key:'y',label:'Y Axis',hint:'Optional (some chart types)',types:['numeric']},
+                {key:'color',label:'Color / Group',hint:'Optional grouping variable'},
+              ]}
+              values={{x:cfg.x||null,y:cfg.y||null,color:cfg.color||null}}
+              onChange={v=>setCfg(c=>({...c,x:v.x||'',y:v.y||'',color:v.color||''}))}
+            />
+          )}
+          {cfg.type==='heatmap'&&(
+            <div style={{fontSize:12,color:'var(--text-muted)',padding:'8px 10px',background:'var(--paper)',borderRadius:7,border:'1px solid var(--border)'}}>
+              Heatmap uses all numeric columns automatically.
+            </div>
+          )}
+          <div style={{marginBottom:14}}>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',display:'block',marginBottom:4}}>Title</label>
+            <input className="input-field" value={cfg.title} onChange={e=>setCfg(c=>({...c,title:e.target.value}))} placeholder="Optional…" style={{width:'100%',fontSize:12}}/>
+          </div>
+          <button className="btn btn-gold" onClick={renderChart} style={{width:'100%',marginBottom:8}}>Render Chart</button>
+          {rendered&&(
+            <>
+              <button className="btn btn-secondary btn-sm" onClick={()=>dispatch({type:'ADD_CHART',c:{id:'ch_'+Date.now(),cfg:{...cfg},dsId:ds.id,t:Date.now()}})} style={{width:'100%',marginBottom:8,fontSize:12}}>Save to Report</button>
+              <div style={{display:'flex',gap:4}}>
+                {['png','svg','pdf'].map(f=><button key={f} className="btn btn-secondary" style={{flex:1,fontSize:11,padding:'5px 4px'}} onClick={()=>dlChart(f)}>{f.toUpperCase()}</button>)}
+              </div>
+            </>
+          )}
+        </div>
+        <div style={{flex:1,padding:20,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+          {!cfg.x?(
+            <div className="empty-state"><div style={{fontSize:48,opacity:0.15}}>◈</div><p style={{color:'var(--text-muted)',fontSize:13}}>Select a variable for the X axis to build a chart</p></div>
+          ):(
+            <div ref={chartRef} style={{flex:1,minHeight:400}}/>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ANALYZE MODULE
+═══════════════════════════════════════════════════════════ */
+function SigLegend(){
+  return(
+    <div style={{display:'flex',gap:14,marginTop:18,paddingTop:12,borderTop:'1px solid var(--border)',fontSize:11,color:'var(--text-muted)',flexWrap:'wrap'}}>
+      <span style={{fontWeight:600}}>Codes:</span>
+      {[['***','p<.001'],['**','p<.01'],['*','p<.05'],['.','p<.10'],['n.s.','p≥.10']].map(([c,l])=><span key={c}><strong>{c}</strong> {l}</span>)}
+    </div>
+  );
+}
+function SigBadge({p}){return <span className={`pill ${sigCls(p)}`}>{fmtP(p)} {sig(p)}</span>;}
+function StatCard({label,value}){return(<div className="stat-card" style={{padding:12}}><div style={{fontSize:11,color:'var(--text-muted)',marginBottom:3}}>{label}</div><div style={{fontFamily:'monospace',fontSize:17,fontWeight:600,letterSpacing:'-0.02em'}}>{value}</div></div>);}
+
+const TESTS=[
+  {id:'descriptive',l:'Descriptive Statistics',g:'Summary'},
+  {id:'ttest1',l:'One-Sample t-Test',g:'Hypothesis Tests'},
+  {id:'ttest2',l:'Two-Sample / Welch t-Test',g:'Hypothesis Tests'},
+  {id:'ttestpaired',l:'Paired t-Test',g:'Hypothesis Tests'},
+  {id:'anova1',l:'One-Way ANOVA',g:'ANOVA'},
+  {id:'correlation',l:'Correlation Analysis',g:'Association'},
+  {id:'regression',l:'Multiple Linear Regression',g:'Models'},
+  {id:'mannwhitney',l:'Mann-Whitney U',g:'Nonparametric'},
+  {id:'chisq',l:'Chi-Square Independence',g:'Nonparametric'},
+];
+
+/* ═══════════════════════════════════════════════════════════
+   ANALYSIS WIZARD (Intent-First Navigation)
+═══════════════════════════════════════════════════════════ */
+const WIZARD_INTENTS=[
+  {id:'compare',icon:'⚖',label:'Compare Groups',desc:'Test if means/distributions differ',color:'#3B82F6',bgColor:'rgba(59,130,246,0.1)'},
+  {id:'relate',icon:'⟳',label:'Relationships',desc:'Correlations between variables',color:'#8B5CF6',bgColor:'rgba(139,92,246,0.1)'},
+  {id:'summarize',icon:'≡',label:'Describe Data',desc:'Summary statistics & distributions',color:'#22C55E',bgColor:'rgba(34,197,94,0.1)'},
+  {id:'model',icon:'⌁',label:'Predict / Model',desc:'Regression & linear models',color:'#C8903E',bgColor:'rgba(200,144,62,0.1)'},
+  {id:'nonparam',icon:'∼',label:'Non-Parametric',desc:'Distribution-free tests',color:'#EF4444',bgColor:'rgba(239,68,68,0.1)'},
+  {id:'categorical',icon:'χ',label:'Categorical',desc:'Chi-square & contingency tables',color:'#0891B2',bgColor:'rgba(8,145,178,0.1)'},
+];
+const INTENT_TESTS={
+  compare:[
+    {id:'ttest2',label:"Welch's t-Test",note:'Two groups, normal, unequal var'},
+    {id:'ttest1',label:'One-Sample t-Test',note:'Compare mean to known value'},
+    {id:'ttestpaired',label:'Paired t-Test',note:'Repeated measures / matched pairs'},
+    {id:'anova1',label:'One-Way ANOVA',note:'Three or more groups'},
+  ],
+  relate:[
+    {id:'correlation',label:'Correlation Matrix',note:'Pearson or Spearman r'},
+    {id:'regression',label:'Linear Regression',note:'Predict continuous outcome'},
+  ],
+  summarize:[{id:'descriptive',label:'Descriptive Statistics',note:'Means, SD, CI, skewness'}],
+  model:[{id:'regression',label:'Linear Regression (OLS)',note:'Continuous outcome'}],
+  nonparam:[
+    {id:'mannwhitney',label:'Mann-Whitney U',note:'Two independent samples'},
+  ],
+  categorical:[{id:'chisq',label:'Chi-Square Independence',note:'Two categorical variables'}],
+};
+
+function AnalysisWizardPanel({test,setTest,setResult,setCfg}){
+  const[intent,setIntent]=useState(null);
+
+  function choose(id){setIntent(null);setTest(id);setResult(null);setCfg({});}
+
+  return(
+    <div style={{overflowY:'auto',padding:'8px 0',flex:1}}>
+      {!intent?(
+        <div className="slide-in">
+          <div style={{padding:'8px 14px 6px',fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.28)',textTransform:'uppercase',letterSpacing:'0.07em'}}>What do you want to do?</div>
+          {WIZARD_INTENTS.map(w=>(
+            <div key={w.id} onClick={()=>setIntent(w.id)}
+              style={{margin:'1px 8px',padding:'9px 12px',borderRadius:8,cursor:'pointer',transition:'all 0.15s',display:'flex',alignItems:'center',gap:10}}
+              onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+            >
+              <div style={{width:30,height:30,borderRadius:7,background:w.bgColor,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,color:w.color,flexShrink:0}}>{w.icon}</div>
+              <div>
+                <div style={{fontSize:12,fontWeight:500,color:'rgba(255,255,255,0.85)'}}>{w.label}</div>
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:1}}>{w.desc}</div>
+              </div>
+            </div>
+          ))}
+          <div style={{margin:'10px 8px 0',borderTop:'1px solid rgba(255,255,255,0.07)',paddingTop:10}}>
+            <div style={{padding:'4px 6px',fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.28)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>Or pick directly</div>
+            {TESTS.map(t=>(
+              <div key={t.id} onClick={()=>choose(t.id)}
+                style={{padding:'7px 12px',fontSize:12,cursor:'pointer',fontWeight:test===t.id?600:400,background:test===t.id?'rgba(200,144,62,0.15)':'transparent',borderLeft:`2.5px solid ${test===t.id?'var(--gold)':'transparent'}`,color:test===t.id?'#fff':'rgba(255,255,255,0.45)',transition:'all 0.1s',borderRadius:'0 6px 6px 0'}}
+                onMouseEnter={e=>{if(test!==t.id)e.currentTarget.style.color='rgba(255,255,255,0.78)';}}
+                onMouseLeave={e=>{if(test!==t.id)e.currentTarget.style.color='rgba(255,255,255,0.45)';}}
+              >{t.l}</div>
+            ))}
+          </div>
+        </div>
+      ):(
+        <div className="slide-in">
+          <button onClick={()=>setIntent(null)} className="ghost-btn" style={{margin:'8px 14px',color:'rgba(255,255,255,0.5)'}}>← Back</button>
+          <div style={{padding:'4px 14px 8px',fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.28)',textTransform:'uppercase',letterSpacing:'0.07em'}}>Select Test</div>
+          {(INTENT_TESTS[intent]||[]).map(t=>(
+            <div key={t.id} onClick={()=>choose(t.id)}
+              style={{margin:'2px 8px',padding:'10px 13px',borderRadius:8,cursor:'pointer',transition:'all 0.15s',background:test===t.id?'rgba(200,144,62,0.15)':'rgba(255,255,255,0.04)',border:`1px solid ${test===t.id?'rgba(200,144,62,0.3)':'transparent'}`}}
+              onMouseEnter={e=>{if(test!==t.id)e.currentTarget.style.background='rgba(255,255,255,0.07)';}}
+              onMouseLeave={e=>{if(test!==t.id)e.currentTarget.style.background='rgba(255,255,255,0.04)';}}
+            >
+              <div style={{fontSize:12,fontWeight:600,color:test===t.id?'var(--gold)':'rgba(255,255,255,0.85)'}}>{t.label}</div>
+              <div style={{fontSize:11,color:'rgba(255,255,255,0.35)',marginTop:2}}>{t.note}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnalyzeModule({state,dispatch}){
+  const[test,setTest]=useState('descriptive');
+  const[cfg,setCfg]=useState({});
+  const[result,setResult]=useState(null);
+  const[loading,setLoading]=useState(false);
+  const ds=state.datasets.find(d=>d.id===state.activeId);
+  const nc=ds?numCols(ds):[];const cc=ds?catCols(ds):[];
+  const upd=(k,v)=>setCfg(c=>({...c,[k]:v}));
+  const groups=[...new Set(TESTS.map(t=>t.g))];
+
+  function run(){
+    if(!ds)return;setLoading(true);
+    setTimeout(()=>{
+      try{
+        let r=null;
+        if(test==='descriptive'){
+          const cols=cfg.cols?.length?cfg.cols:nc;
+          r={_type:'descriptive',stats:cols.map(col=>({col,...describe(getNum(ds,col))}))};
+        }else if(test==='ttest1'){
+          const v=getNum(ds,cfg.col||nc[0]);r={_type:'ttest1',...ttest1(v,Number(cfg.mu0||0))};
+        }else if(test==='ttest2'){
+          const grpCol=cfg.groupCol;const depCol=cfg.col||nc[0];
+          const v1=grpCol&&cfg.g1?ds.rows.filter(r=>String(r[grpCol])===String(cfg.g1)).map(r=>Number(r[depCol])).filter(v=>!isNaN(v)):getNum(ds,cfg.col1||nc[0]);
+          const v2=grpCol&&cfg.g2?ds.rows.filter(r=>String(r[grpCol])===String(cfg.g2)).map(r=>Number(r[depCol])).filter(v=>!isNaN(v)):getNum(ds,cfg.col2||nc[1]);
+          r={_type:'ttest2',...ttest2(v1,v2,cfg.eqvar||false)};
+        }else if(test==='ttestpaired'){
+          r={_type:'ttestpaired',...ttestpaired(getNum(ds,cfg.col1||nc[0]),getNum(ds,cfg.col2||nc[1]))};
+        }else if(test==='anova1'){
+          r={_type:'anova1',...anova1(ds.rows,cfg.dep||nc[0],cfg.grp||cc[0])};
+        }else if(test==='correlation'){
+          const cols=cfg.cols?.length?cfg.cols:nc.slice(0,6);
+          r={_type:'corr',...corrMatrix(ds.rows,cols,cfg.method||'pearson')};
+        }else if(test==='regression'){
+          const dep=cfg.dep||nc[0];const preds=cfg.preds||[];
+          if(!preds.length){alert('Select at least one predictor.');setLoading(false);return;}
+          const yv=getNum(ds,dep);const Xm=ds.rows.map(row=>preds.map(p=>Number(row[p]))).filter((_,i)=>!isNaN(yv[i]));const yc=yv.filter(v=>!isNaN(v));
+          r={_type:'ols',dep,preds,names:['(Intercept)',...preds],...olsRegression(yc,Xm)};
+        }else if(test==='mannwhitney'){
+          r={_type:'mw',...mannWhitney(getNum(ds,cfg.col1||nc[0]),getNum(ds,cfg.col2||nc[1]))};
+        }else if(test==='chisq'){
+          r={_type:'chisq',...chiSqIndep(ds.rows,cfg.col1||cc[0],cfg.col2||cc[1])};
+        }
+        if(r){setResult(r);dispatch({type:'ADD_ANALYSIS',a:{id:'an_'+Date.now(),test,cfg,result:r,dsId:ds.id,t:Date.now()}});}
+      }catch(e){console.error(e);alert('Analysis error: '+e.message);}
+      setLoading(false);
+    },40);
+  }
+
+  if(!ds)return(<div style={{display:'flex',flexDirection:'column',height:'100%'}}><div className="module-header"><div className="module-title">Analysis Lab</div></div><div className="empty-state"><div style={{fontSize:48,opacity:0.18}}>∑</div><p style={{color:'var(--text-muted)'}}>Load a dataset first.</p></div></div>);
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <div className="module-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div><div className="module-title">Analysis Lab</div><div className="module-subtitle">Statistical tests, models, and summaries</div></div>
+        {state.datasets.length>1&&<select className="select-field" style={{fontSize:12}} value={state.activeId||''} onChange={e=>dispatch({type:'SET_ACTIVE',id:e.target.value})}>{state.datasets.map(d=><option key={d.id} value={d.id}>{d.name}</option>)}</select>}
+      </div>
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        {/* Test list – wizard */}
+        <div style={{width:216,borderRight:'1px solid rgba(255,255,255,0.06)',overflowY:'auto',background:'var(--navy)',flexShrink:0,display:'flex',flexDirection:'column'}}>
+          <AnalysisWizardPanel test={test} setTest={setTest} setResult={setResult} setCfg={setCfg}/>
+        </div>
+        {/* Config */}
+        <div className="side-panel" style={{width:256,borderRight:'1px solid var(--border)',background:'white'}}>
+          <div style={{fontWeight:600,fontSize:13,marginBottom:12}}>{TESTS.find(t=>t.id===test)?.l}</div>
+          <AnalysisCfg test={test} cfg={cfg} upd={upd} nc={nc} cc={cc} ds={ds}/>
+          <button className="btn btn-gold" onClick={run} style={{width:'100%',marginTop:14}} disabled={loading}>{loading?'Running…':'Run Analysis'}</button>
+          {state.analyses.length>0&&(
+            <div style={{marginTop:20}}>
+              <div className="section-head" style={{paddingLeft:0,fontSize:10}}>Recent ({state.analyses.length})</div>
+              {state.analyses.slice(0,5).map(a=>(
+                <div key={a.id} onClick={()=>setResult(a.result)} style={{fontSize:11,color:'var(--text-muted)',padding:'4px 0',cursor:'pointer',borderBottom:'1px solid var(--border)'}}>
+                  {TESTS.find(t=>t.id===a.test)?.l||a.test}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Results */}
+        <div className="results-panel">
+          {result?<AnalysisResult r={result} test={test}/>:<div className="empty-state"><div style={{fontSize:48,opacity:0.15}}>∑</div><p style={{color:'var(--text-muted)',fontSize:13}}>Configure and run an analysis</p></div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AnalysisCfg({test,cfg,upd,nc,cc,ds}){
+  const ac=ds?ds.columns:[];
+  if(test==='descriptive')return(
+    <div><div style={{fontSize:12,fontWeight:500,marginBottom:6}}>Variables (blank = all numeric)</div>
+    <div style={{maxHeight:200,overflowY:'auto'}}>
+      {nc.map(c=><label key={c} className="check-row"><input type="checkbox" checked={(cfg.cols||[]).includes(c)} onChange={e=>upd('cols',e.target.checked?[...(cfg.cols||[]),c]:(cfg.cols||[]).filter(x=>x!==c))}/>{c}</label>)}
+    </div></div>
+  );
+  if(test==='ttest1')return(<div style={{display:'flex',flexDirection:'column',gap:11}}>
+    <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Variable</label><select className="select-field" value={cfg.col||''} onChange={e=>upd('col',e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{nc.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+    <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>H₀ mean (μ₀)</label><input className="input-field" type="number" value={cfg.mu0??0} onChange={e=>upd('mu0',e.target.value)} style={{width:'100%',fontSize:12}}/></div>
+  </div>);
+  if(test==='ttest2')return(<div style={{display:'flex',flexDirection:'column',gap:12}}>
+    <DragVarPanel ds={ds}
+      slotDefs={[
+        {key:'col',label:'Outcome Variable',hint:'Numeric dependent variable',types:['numeric']},
+        {key:'groupCol',label:'Grouping Variable',hint:'Categorical group column'},
+      ]}
+      values={{col:cfg.col||null,groupCol:cfg.groupCol||null}}
+      onChange={v=>{upd('col',v.col||'');upd('groupCol',v.groupCol||'');}}
+    />
+    {cfg.groupCol&&(()=>{const grps=[...new Set(ds.rows.map(r=>r[cfg.groupCol]).filter(Boolean))];return(
+      <div style={{display:'flex',gap:8}}>
+        {['g1','g2'].map((k,i)=>(
+          <div key={k} style={{flex:1}}>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',display:'block',marginBottom:4}}>Group {i+1}</label>
+            <select className="select-field" value={cfg[k]||''} onChange={e=>upd(k,e.target.value)} style={{width:'100%',fontSize:12}}>
+              <option value="">Select…</option>{grps.map(g=><option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+        ))}
+      </div>
+    );})()}
+    <label className="check-row" style={{fontSize:12}}><input type="checkbox" checked={cfg.eqvar||false} onChange={e=>upd('eqvar',e.target.checked)}/> Assume equal variances (Student's t)</label>
+    <div style={{fontSize:11,padding:'8px 11px',background:'rgba(74,127,168,0.07)',borderRadius:7,color:'var(--blue)',lineHeight:1.6}}>
+      {cfg.eqvar?"Student's two-sample t-test":"Welch's t-test (recommended — unequal variances)"}
+    </div>
+  </div>);
+  if(test==='ttestpaired'||test==='mannwhitney')return(<div style={{display:'flex',flexDirection:'column',gap:11}}>
+    {['col1','col2'].map((k,i)=><div key={k}><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Variable {i+1}</label><select className="select-field" value={cfg[k]||''} onChange={e=>upd(k,e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{nc.map(c=><option key={c} value={c}>{c}</option>)}</select></div>)}
+  </div>);
+  if(test==='anova1')return(<div style={{display:'flex',flexDirection:'column',gap:11}}>
+    <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Dependent Variable</label><select className="select-field" value={cfg.dep||''} onChange={e=>upd('dep',e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{nc.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+    <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Group Variable</label><select className="select-field" value={cfg.grp||''} onChange={e=>upd('grp',e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{ac.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+  </div>);
+  if(test==='correlation')return(<div>
+    <div style={{fontSize:12,fontWeight:500,marginBottom:6}}>Variables (blank = first 6 numeric)</div>
+    <div style={{maxHeight:160,overflowY:'auto',marginBottom:10}}>
+      {nc.map(c=><label key={c} className="check-row"><input type="checkbox" checked={(cfg.cols||[]).includes(c)} onChange={e=>upd('cols',e.target.checked?[...(cfg.cols||[]),c]:(cfg.cols||[]).filter(x=>x!==c))}/>{c}</label>)}
+    </div>
+    <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Method</label><select className="select-field" value={cfg.method||'pearson'} onChange={e=>upd('method',e.target.value)} style={{width:'100%',fontSize:12}}><option value="pearson">Pearson</option><option value="spearman">Spearman</option></select></div>
+  </div>);
+  if(test==='regression'){
+    const preds=cfg.preds||[];
+    const available=nc.filter(c=>c!==cfg.dep&&!preds.includes(c));
+    return(<div style={{display:'flex',flexDirection:'column',gap:11}}>
+      <div>
+        <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',display:'block',marginBottom:4}}>Outcome (Y)</label>
+        <select className="select-field" value={cfg.dep||''} onChange={e=>upd('dep',e.target.value)} style={{width:'100%',fontSize:12}}>
+          <option value="">Select…</option>{nc.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div>
+        <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',display:'block',marginBottom:6}}>Predictors (X) — check or drag</label>
+        <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:6}}>
+          {available.map(c=>(
+            <div key={c} className="var-chip num" onClick={()=>upd('preds',[...preds,c])} style={{cursor:'pointer'}} title="Click to add">
+              <span className="var-badge">#</span>{c}<span style={{marginLeft:4,opacity:0.5,fontSize:11}}>+</span>
+            </div>
+          ))}
+        </div>
+        {preds.length>0&&(
+          <div style={{display:'flex',flexWrap:'wrap',gap:5,padding:'7px',background:'rgba(74,127,168,0.06)',borderRadius:7,border:'1px solid rgba(74,127,168,0.15)'}}>
+            {preds.map(c=>(
+              <div key={c} className="var-chip num pop-in">
+                <span className="var-badge">#</span>{c}
+                <span onClick={()=>upd('preds',preds.filter(x=>x!==c))} style={{marginLeft:5,cursor:'pointer',opacity:0.45,fontSize:13}}>×</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {cfg.dep&&preds.length>0&&(
+        <div className="model-formula">{cfg.dep} ~ {preds.join(' + ')}</div>
+      )}
+    </div>);
+  }
+  if(test==='chisq')return(<div style={{display:'flex',flexDirection:'column',gap:11}}>
+    {['col1','col2'].map((k,i)=><div key={k}><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Variable {i+1}</label><select className="select-field" value={cfg[k]||''} onChange={e=>upd(k,e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{ac.map(c=><option key={c} value={c}>{c}</option>)}</select></div>)}
+  </div>);
+  return null;
+}
+
+function AnalysisResult({r,test}){
+  if(!r)return null;
+  const g3=n=>Array.from({length:n},(_, i)=>'1fr').join(' ');
+  function copyJSON(){navigator.clipboard?.writeText(JSON.stringify(r,null,2));}
+  if(r._type==='descriptive')return(
+    <div className="fade-in">
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:16}}>Descriptive Statistics</h2>
+      <div style={{overflowX:'auto'}}>
+        <table className="result-table">
+          <thead><tr><th>Variable</th><th>n</th><th>Missing</th><th>Mean</th><th>Median</th><th>SD</th><th>SE</th><th>Min</th><th>Max</th><th>IQR</th><th>Skew</th><th>Kurt.</th><th>95% CI</th></tr></thead>
+          <tbody>{r.stats.map(s=>(
+            <tr key={s.col}>
+              <td style={{fontWeight:600}}>{s.col}</td><td>{s.n}</td>
+              <td style={{color:s.missing>0?'var(--danger)':''}}>{s.missing}</td>
+              <td>{fmt(s.mean)}</td><td>{fmt(s.median)}</td><td>{fmt(s.sd)}</td><td>{fmt(s.se)}</td>
+              <td>{fmt(s.min)}</td><td>{fmt(s.max)}</td><td>{fmt(s.iqr)}</td>
+              <td>{fmt(s.skewness,3)}</td><td>{fmt(s.kurtosis,3)}</td>
+              <td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(s.ci95_lo,3)}, {fmt(s.ci95_hi,3)}]</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <div style={{marginTop:14,display:'flex',gap:8}}><button className="btn btn-secondary btn-sm" onClick={copyJSON}>Copy JSON</button></div>
+    </div>
+  );
+  if(r._type==='ttest1'||r._type==='ttest2'||r._type==='ttestpaired')return(
+    <div className="fade-in">
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:6}}>{r.label}</h2>
+      <div style={{marginBottom:20}}><SigBadge p={r.p}/></div>
+      <div style={{display:'grid',gridTemplateColumns:g3(r.mean1!==undefined?4:3),gap:12,marginBottom:20}}>
+        {r.mean1!==undefined?[['Mean 1',fmt(r.mean1)],['Mean 2',fmt(r.mean2)],['Difference',fmt(r.diff)],['Cohen\'s d',fmt(r.d,3)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>):[['Mean',fmt(r.mean)],['SD',fmt(r.sd)],['Cohen\'s d',fmt(r.d,3)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:g3(3),gap:12,marginBottom:20}}>
+        {[['t statistic',fmt(r.t,4)],['df',fmt(r.df,2)],['p-value',fmtP(r.p)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+      </div>
+      <div style={{padding:'12px 16px',background:'rgba(74,127,168,0.07)',borderRadius:8,marginBottom:16}}>
+        <div style={{fontWeight:600,fontSize:12,marginBottom:4,color:'var(--blue)'}}>95% Confidence Interval {r.mean1!==undefined?'(difference)':''}</div>
+        <div style={{fontFamily:'monospace',fontSize:14}}>[{fmt(r.ci_lo,4)},&nbsp;&nbsp;{fmt(r.ci_hi,4)}]</div>
+      </div>
+      <SigLegend/>
+      <div style={{marginTop:12,display:'flex',gap:8}}><button className="btn btn-secondary btn-sm" onClick={copyJSON}>Copy JSON</button></div>
+    </div>
+  );
+  if(r._type==='anova1')return(
+    <div className="fade-in">
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:6}}>One-Way ANOVA</h2>
+      <div style={{marginBottom:16,display:'flex',gap:8,flexWrap:'wrap'}}>
+        <span className={`pill ${sigCls(r.p)}`} style={{fontSize:12,padding:'4px 12px'}}>F({r.dfb},{r.dfw}) = {fmt(r.F,3)}, p {fmtP(r.p)} {sig(r.p)}</span>
+        <span className="pill pill-green" style={{fontSize:12,padding:'4px 12px'}}>η² = {fmt(r.eta2,3)}</span>
+      </div>
+      <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>ANOVA Table</div>
+      <table className="result-table" style={{marginBottom:20}}>
+        <thead><tr><th>Source</th><th>SS</th><th>df</th><th>MS</th><th>F</th><th>p</th></tr></thead>
+        <tbody>
+          <tr><td>Between Groups</td><td>{fmt(r.ssb)}</td><td>{r.dfb}</td><td>{fmt(r.msb)}</td><td>{fmt(r.F,4)}</td><td><SigBadge p={r.p}/></td></tr>
+          <tr><td>Within Groups</td><td>{fmt(r.ssw)}</td><td>{r.dfw}</td><td>{fmt(r.msw)}</td><td>—</td><td>—</td></tr>
+          <tr style={{fontWeight:600}}><td>Total</td><td>{fmt(r.ssb+r.ssw)}</td><td>{r.dfb+r.dfw}</td><td>—</td><td>—</td><td>—</td></tr>
+        </tbody>
+      </table>
+      <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>Group Statistics</div>
+      <table className="result-table" style={{marginBottom:20}}>
+        <thead><tr><th>Group</th><th>n</th><th>Mean</th><th>SD</th><th>SE</th></tr></thead>
+        <tbody>{r.groups.map(g=><tr key={g.group}><td style={{fontWeight:600}}>{g.group}</td><td>{g.n}</td><td>{fmt(g.mean)}</td><td>{fmt(g.sd)}</td><td>{fmt(g.se)}</td></tr>)}</tbody>
+      </table>
+      {r.tukey.length>0&&(<>
+        <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>Post-Hoc: Tukey HSD</div>
+        <table className="result-table">
+          <thead><tr><th>Group 1</th><th>Group 2</th><th>Difference</th><th>SE</th><th>q</th></tr></thead>
+          <tbody>{r.tukey.map((t,i)=><tr key={i}><td>{t.g1}</td><td>{t.g2}</td><td>{fmt(t.diff)}</td><td>{fmt(t.se)}</td><td>{fmt(t.q,3)}</td></tr>)}</tbody>
+        </table>
+      </>)}
+      <SigLegend/>
+    </div>
+  );
+  if(r._type==='corr')return(
+    <div className="fade-in">
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>
+        {r.method==='spearman'?'Spearman':'Pearson'} Correlation Matrix
+      </h2>
+      <p style={{fontSize:12,color:'var(--text-muted)',marginBottom:18}}>Upper triangle: r values. Lower triangle: p-values.</p>
+      <div style={{overflowX:'auto',marginBottom:20}}>
+        <table className="result-table">
+          <thead><tr><th></th>{r.cols.map(c=><th key={c} style={{fontFamily:'monospace',fontSize:11}}>{c}</th>)}</tr></thead>
+          <tbody>{r.cols.map((c1,i)=>(
+            <tr key={c1}>
+              <td style={{fontWeight:600,fontSize:12}}>{c1}</td>
+              {r.cols.map((c2,j)=>{
+                const cell=r.matrix[i][j];
+                if(i===j)return<td key={c2} style={{color:'#D1D5DB',textAlign:'center'}}>—</td>;
+                if(i<j){const rv=cell.r;const col=rv>0.7?'#1D4ED8':rv>0.3?'#3B82F6':rv<-0.7?'#DC2626':rv<-0.3?'#F87171':'#9CA3AF';return<td key={c2} style={{textAlign:'center',fontFamily:'monospace',color:col,fontWeight:Math.abs(rv)>0.5?700:400,fontSize:13}}>{rv.toFixed(3)}</td>;}
+                return<td key={c2} style={{textAlign:'center'}}><SigBadge p={cell.p}/></td>;
+              })}
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <SigLegend/>
+    </div>
+  );
+  if(r._type==='ols')return(
+    <div className="fade-in">
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Linear Regression (OLS)</h2>
+      <p style={{fontSize:12,color:'var(--text-muted)',marginBottom:16}}><strong>{r.dep}</strong> ~ {r.preds.join(' + ')} · n = {r.n}</p>
+      <div style={{display:'grid',gridTemplateColumns:g3(4),gap:12,marginBottom:20}}>
+        {[['R²',fmt(r.r2,4)],['Adj. R²',fmt(r.r2adj,4)],['F stat',fmt(r.f,3)],['RMSE',fmt(r.rmse,4)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+      </div>
+      <div style={{marginBottom:8,display:'flex',gap:8,alignItems:'center'}}>
+        <span style={{fontSize:13,fontWeight:600}}>Coefficients</span>
+        <span className={`pill ${sigCls(r.p_f)}`}>F p {fmtP(r.p_f)}</span>
+      </div>
+      <table className="result-table" style={{marginBottom:20}}>
+        <thead><tr><th>Term</th><th>β (Estimate)</th><th>Std. Error</th><th>t value</th><th>p</th><th>95% CI</th></tr></thead>
+        <tbody>{r.names.map((name,i)=>(
+          <tr key={name}>
+            <td style={{fontWeight:600}}>{name}</td>
+            <td>{fmt(r.beta[i])}</td><td>{fmt(r.se_b[i])}</td><td>{fmt(r.t_v[i],3)}</td>
+            <td><SigBadge p={r.p_v[i]}/></td>
+            <td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(r.ci_lo[i],3)}, {fmt(r.ci_hi[i],3)}]</td>
+          </tr>
+        ))}</tbody>
+      </table>
+      <div style={{padding:12,background:'var(--paper)',borderRadius:8,fontSize:12,color:'var(--text-muted)',marginBottom:12}}>
+        Model explains {(r.r2*100).toFixed(1)}% of variance (R²={fmt(r.r2,3)}, Adj. R²={fmt(r.r2adj,3)}).
+        F({r.df_m},{r.df_e})={fmt(r.f,2)}, p{fmtP(r.p_f)}. Residual SE={fmt(r.rmse,4)}.
+      </div>
+      <SigLegend/>
+    </div>
+  );
+  if(r._type==='mw')return(
+    <div className="fade-in">
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:16}}>Mann-Whitney U Test</h2>
+      <div style={{display:'grid',gridTemplateColumns:g3(3),gap:12,marginBottom:20}}>
+        {[['U statistic',r.U],['z score',fmt(r.z,3)],['p-value (2-tail)',fmtP(r.p)],['n₁',r.nx],['n₂',r.ny],['U₁',r.U1]].map(([l,v])=><StatCard key={l} label={l} value={String(v)}/>)}
+      </div>
+      <SigBadge p={r.p}/><SigLegend/>
+    </div>
+  );
+  if(r._type==='chisq')return(
+    <div className="fade-in">
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:16}}>Chi-Square Test of Independence</h2>
+      <div style={{display:'grid',gridTemplateColumns:g3(4),gap:12,marginBottom:20}}>
+        {[['χ² statistic',fmt(r.chi2,3)],['df',r.df],['p-value',fmtP(r.p)],["Cramér's V",fmt(r.cramersV,3)]].map(([l,v])=><StatCard key={l} label={l} value={String(v)}/>)}
+      </div>
+      <div style={{marginBottom:8,display:'flex',gap:8}}><SigBadge p={r.p}/></div>
+      <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>Observed Counts (Expected)</div>
+      <table className="result-table">
+        <thead><tr><th></th>{r.v2.map(v=><th key={v}>{v}</th>)}</tr></thead>
+        <tbody>{r.v1.map((v1,i)=><tr key={v1}><td style={{fontWeight:600}}>{v1}</td>{r.obs[i].map((o,j)=><td key={j}>{o} <span style={{color:'var(--text-muted)',fontSize:10}}>({fmt(r.exp[i][j],1)})</span></td>)}</tr>)}</tbody>
+      </table>
+      <SigLegend/>
+    </div>
+  );
+  return<div style={{fontFamily:'monospace',fontSize:12,padding:16,background:'var(--paper)',borderRadius:8}}>{JSON.stringify(r,null,2)}</div>;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MODELS MODULE
+═══════════════════════════════════════════════════════════ */
+function ModelsModule({state,dispatch}){
+  const[mtype,setMtype]=useState('ols');
+  const[cfg,setCfg]=useState({dep:'',preds:[],grpVar:'',link:'identity'});
+  const[result,setResult]=useState(null);
+  const ds=state.datasets.find(d=>d.id===state.activeId);
+  const nc=ds?numCols(ds):[];const cc=ds?catCols(ds):[];
+  const upd=(k,v)=>setCfg(c=>({...c,[k]:v}));
+
+  function fitModel(){
+    if(!ds||!cfg.dep||!cfg.preds.length)return alert('Select outcome and at least one predictor.');
+    try{
+      if(mtype==='ols'){
+        const yv=getNum(ds,cfg.dep);
+        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const yc=yv.filter(v=>!isNaN(v));
+        const r=olsRegression(yc,Xm);
+        if(r)setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_ols'});
+        else alert('Matrix is singular. Check for collinear predictors.');
+      }else if(mtype==='logistic'){
+        const vals=getVal(ds,cfg.dep);
+        const uniq=[...new Set(vals.filter(v=>v!==null&&v!==''))];
+        if(uniq.length!==2)return alert('Logistic regression requires exactly 2 unique outcome values (binary).');
+        const yv=vals.map(v=>v===uniq[1]?1:v===uniq[0]?0:NaN);
+        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const yc=yv.filter(v=>!isNaN(v));
+        const r=logisticReg(yc,Xm);
+        setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],levels:uniq,_type:'model_logistic'});
+      }else if(mtype==='poisson'){
+        const yv=getNum(ds,cfg.dep);
+        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const yc=yv.filter(v=>!isNaN(v));
+        const r=poissonReg(yc,Xm);
+        setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_poisson'});
+      }
+    }catch(e){alert('Model error: '+e.message+'. Check your data for issues.');}
+  }
+
+  if(!ds)return(<div style={{display:'flex',flexDirection:'column',height:'100%'}}><div className="module-header"><div className="module-title">Model Builder</div></div><div className="empty-state"><div style={{fontSize:48,opacity:0.18}}>⬡</div><p style={{color:'var(--text-muted)'}}>Load a dataset first.</p></div></div>);
+
+  const MODEL_TYPES=[
+    {id:'ols',l:'Linear Regression',sub:'Continuous outcome · OLS',avail:true},
+    {id:'logistic',l:'Logistic Regression',sub:'Binary outcome · log-odds',avail:true},
+    {id:'poisson',l:'Poisson GLM',sub:'Count outcome · log-link',avail:true},
+    {id:'lmm',l:'Linear Mixed Model',sub:'Random intercepts/slopes',avail:false},
+    {id:'glmm',l:'Generalized LMM',sub:'Mixed effects + link fn',avail:false},
+  ];
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <div className="module-header"><div className="module-title">Model Builder</div><div className="module-subtitle">Regression, GLM, and hierarchical model framework</div></div>
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        {/* Model type selector */}
+        <div style={{width:220,borderRight:'1px solid var(--border)',overflowY:'auto',background:'var(--paper)',padding:'12px 0',flexShrink:0}}>
+          <div className="section-head">Model Family</div>
+          {MODEL_TYPES.map(m=>(
+            <div key={m.id} onClick={()=>m.avail&&setMtype(m.id)} style={{padding:'10px 14px',borderRadius:6,cursor:m.avail?'pointer':'not-allowed',background:mtype===m.id?'rgba(200,144,62,0.1)':'transparent',borderLeft:`2.5px solid ${mtype===m.id?'var(--gold)':'transparent'}`,opacity:m.avail?1:0.42,margin:'1px 8px',transition:'all 0.1s'}}>
+              <div style={{fontSize:12,fontWeight:500}}>{m.l}</div>
+              <div style={{fontSize:11,color:'var(--text-muted)'}}>{m.sub}{!m.avail?<span style={{color:'var(--blue)'}}> · planned</span>:''}</div>
+            </div>
+          ))}
+          <div style={{margin:'16px 12px 0',padding:'12px',background:'rgba(74,127,168,0.08)',borderRadius:8,fontSize:11,color:'var(--blue)',lineHeight:1.6}}>
+            <strong>LMM Extension Point</strong><br/>
+            The UI architecture for mixed effects is built: grouping var selection, formula preview, and random-effects configuration are all wired. Backend solver (e.g., lme4-JS REML) is the next expansion module.
+          </div>
+        </div>
+        {/* Config */}
+        <div className="side-panel" style={{width:280,background:'white',borderRight:'1px solid var(--border)'}}>
+          <div style={{fontWeight:600,fontSize:13,marginBottom:14}}>Model Specification</div>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Outcome Variable (Y)</label>
+            <select className="select-field" value={cfg.dep} onChange={e=>upd('dep',e.target.value)} style={{width:'100%',fontSize:12}}>
+              <option value="">Select…</option>{nc.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.04em',display:'block',marginBottom:6}}>Predictors — click to add/remove</label>
+            <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:6}}>
+              {(mtype==='ols'?nc:ds.columns).filter(c=>c!==cfg.dep&&!(cfg.preds||[]).includes(c)).map(c=>(
+                <div key={c} className={`var-chip ${ds.types[c]==='numeric'?'num':'cat'}`} onClick={()=>upd('preds',[...(cfg.preds||[]),c])} style={{cursor:'pointer'}} title="Click to add">
+                  <span className="var-badge">{ds.types[c]==='numeric'?'#':'T'}</span>{c}<span style={{marginLeft:4,opacity:0.4,fontSize:11}}>+</span>
+                </div>
+              ))}
+            </div>
+            {(cfg.preds||[]).length>0&&(
+              <div style={{display:'flex',flexWrap:'wrap',gap:5,padding:'8px',background:'rgba(74,127,168,0.06)',borderRadius:7,border:'1px solid rgba(74,127,168,0.15)'}}>
+                {(cfg.preds||[]).map(c=>(
+                  <div key={c} className={`var-chip ${ds.types[c]==='numeric'?'num':'cat'} pop-in`}>
+                    <span className="var-badge">{ds.types[c]==='numeric'?'#':'T'}</span>{c}
+                    <span onClick={()=>upd('preds',(cfg.preds||[]).filter(x=>x!==c))} style={{marginLeft:5,cursor:'pointer',opacity:0.4,fontSize:13}}>×</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {(mtype==='lmm'||mtype==='glmm')&&(
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Grouping Variable (Random Effects)</label>
+              <select className="select-field" value={cfg.grpVar} onChange={e=>upd('grpVar',e.target.value)} style={{width:'100%',fontSize:12}}>
+                <option value="">Select…</option>{[...cc,...nc].map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          )}
+          {cfg.dep&&cfg.preds.length>0&&(
+            <div style={{padding:'10px 12px',background:'var(--paper)',borderRadius:7,fontSize:12,fontFamily:'monospace',marginBottom:12,lineHeight:1.7,color:'var(--blue)'}}>
+              {cfg.dep} ~{cfg.preds.length?' '+cfg.preds.join(' + '):' (no predictors)'}
+              {(mtype==='lmm'||mtype==='glmm')&&cfg.grpVar?` + (1 | ${cfg.grpVar})`:''}
+            </div>
+          )}
+          <button className="btn btn-gold" onClick={fitModel} style={{width:'100%'}}>Fit Model</button>
+        </div>
+        {/* Results */}
+        <div className="results-panel">
+          {result?(
+            <div className="fade-in">
+              {result._type==='model_ols'&&(
+                <>
+                  <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Linear Regression (OLS)</h2>
+                  <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')}</div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                    {[['R²',fmt(result.r2,4)],['Adj. R²',fmt(result.r2adj,4)],['F stat',fmt(result.f,3)],['RMSE',fmt(result.rmse,4)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                  </div>
+                  <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β</th><th>SE</th><th>t</th><th>p</th><th>95% CI</th></tr></thead>
+                  <tbody>{result.names.map((name,i)=>(
+                    <tr key={name} className="coef-row">
+                      <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se_b[i])}</td><td>{fmt(result.t_v[i],3)}</td>
+                      <td><SigBadge p={result.p_v[i]}/></td><td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(result.ci_lo[i],3)}, {fmt(result.ci_hi[i],3)}]</td>
+                    </tr>
+                  ))}</tbody></table>
+                  <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>The model explains <strong>{(result.r2*100).toFixed(1)}%</strong> of variance (R² = {fmt(result.r2,3)}, Adj. R² = {fmt(result.r2adj,3)}). F({result.df_m},{result.df_e}) = {fmt(result.f,2)}, p {fmtP(result.p_f)}.</p></div>
+                </>
+              )}
+              {result._type==='model_logistic'&&(
+                <>
+                  <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Logistic Regression</h2>
+                  <div className="model-formula">{result.dep} (ref: {result.levels[0]} → 1 = {result.levels[1]}) ~ {result.preds.join(' + ')}</div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                    {[["McFadden R²",fmt(result.mcfR2,4)],['Accuracy',(result.accuracy*100).toFixed(1)+'%'],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                  </div>
+                  <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-odds)</th><th>SE</th><th>z</th><th>p</th><th>OR (95% CI)</th></tr></thead>
+                  <tbody>{result.names.map((name,i)=>(
+                    <tr key={name} className="coef-row">
+                      <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
+                      <td><SigBadge p={result.p_v[i]}/></td>
+                      <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.or[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
+                    </tr>
+                  ))}</tbody></table>
+                  <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Odds ratios &gt; 1 indicate increased odds of <strong>{result.levels[1]}</strong>. McFadden R² = {fmt(result.mcfR2,3)} ({result.mcfR2>0.2?'good':'modest'} fit). Accuracy = {(result.accuracy*100).toFixed(1)}%.</p></div>
+                </>
+              )}
+              {result._type==='model_poisson'&&(
+                <>
+                  <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Poisson GLM (log-link)</h2>
+                  <div className="model-formula">log({result.dep}) ~ {result.preds.join(' + ')}</div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                    {[['Deviance',fmt(result.deviance,2)],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)],['n',result.n]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                  </div>
+                  <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-rate)</th><th>SE</th><th>z</th><th>p</th><th>IRR (95% CI)</th></tr></thead>
+                  <tbody>{result.names.map((name,i)=>(
+                    <tr key={name} className="coef-row">
+                      <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
+                      <td><SigBadge p={result.p_v[i]}/></td>
+                      <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.irr[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
+                    </tr>
+                  ))}</tbody></table>
+                  <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Incidence Rate Ratios (IRR) multiplicatively scale the expected count. Deviance = {fmt(result.deviance,2)}, AIC = {fmt(result.aic,1)}.</p></div>
+                </>
+              )}
+              <SigLegend/>
+            </div>
+          ):(
+            <div className="empty-state">
+              <div style={{fontSize:48,opacity:0.15}}>⬡</div>
+              <p style={{color:'var(--text-muted)',fontSize:13,maxWidth:340,lineHeight:1.6}}>Specify an outcome and predictors, then click "Fit Model".</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   REPORT MODULE
+═══════════════════════════════════════════════════════════ */
+function ReportModule({state}){
+  const[title,setTitle]=useState(state.projectName||'Statistical Report');
+  const[sects,setSects]=useState({intro:true,data:true,analyses:true,methods:true});
+  const[gen,setGen]=useState(null);
+
+  const ds=state.datasets.find(d=>d.id===state.activeId);
+
+  function generate(){
+    const analyses=state.analyses.slice(0,20);
+    let html=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${title}</title><style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Georgia,serif;max-width:900px;margin:0 auto;padding:44px 28px;color:#1A1D23;background:#FAFAF7;line-height:1.75;}
+h1{font-size:30px;font-weight:600;color:#0D1B2A;margin-bottom:6px;letter-spacing:-0.02em;}
+h2{font-size:20px;font-weight:600;color:#0D1B2A;margin:36px 0 12px;padding-bottom:7px;border-bottom:2px solid #E8E6E1;}
+h3{font-size:16px;font-weight:600;margin:24px 0 8px;color:#374151;}
+p{margin-bottom:12px;}
+.meta{font-family:monospace;font-size:12px;color:#6B7280;margin-bottom:28px;}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;}
+th{background:#0D1B2A;color:white;padding:8px 12px;text-align:left;font-family:Georgia;font-size:12px;}
+td{padding:7px 12px;border-bottom:1px solid #E8E6E1;font-family:Courier New,monospace;}
+tr:nth-child(even) td{background:#F5F4F0;}
+.note{background:#EFF6FF;border-left:3px solid #3B82F6;padding:12px 16px;margin:20px 0;font-size:13px;border-radius:0 6px 6px 0;}
+.sig{background:#FEE2E2;color:#991B1B;padding:1px 7px;border-radius:20px;font-size:11px;font-family:monospace;}
+.notsig{background:#F3F4F6;color:#6B7280;padding:1px 7px;border-radius:20px;font-size:11px;font-family:monospace;}
+.result-block{background:white;border:1px solid #E8E6E1;border-radius:8px;padding:16px;margin:16px 0;}
+footer{margin-top:56px;padding-top:16px;border-top:1px solid #E8E6E1;font-size:11px;color:#9CA3AF;}
+@media print{body{max-width:100%;}}
+</style></head><body>
+<h1>${title}</h1>
+<div class="meta">Generated by StatLab Pro &middot; ${new Date().toLocaleString()} &middot; Local-first browser-based analysis</div>`;
+
+    if(sects.intro){
+      html+=`<h2>Introduction</h2><p>This report summarizes statistical analyses performed using StatLab Pro, a local-first browser-based statistical computing environment. All computations were conducted in-browser using exact numerical algorithms.</p>`;
+    }
+    if(sects.data&&ds){
+      html+=`<h2>Data Description</h2><p>Dataset: <strong>${ds.name}</strong> &mdash; ${ds.rows.length} observations, ${ds.columns.length} variables.</p>
+<table><thead><tr><th>Variable</th><th>Type</th><th>n</th><th>Mean / Top Level</th><th>SD / N Unique</th></tr></thead><tbody>`;
+      ds.columns.forEach(col=>{
+        if(ds.types[col]==='numeric'){const v=getNum(ds,col);const s=describe(v);html+=`<tr><td>${col}</td><td>Numeric</td><td>${s.n}</td><td>${fmt(s.mean,3)}</td><td>${fmt(s.sd,3)}</td></tr>`;}
+        else{const vals=getVal(ds,col);const freq={};vals.forEach(v=>{freq[v]=(freq[v]||0)+1;});const top=Object.entries(freq).sort((a,b)=>b[1]-a[1])[0];html+=`<tr><td>${col}</td><td>Text</td><td>${vals.filter(v=>v!='').length}</td><td>${top?top[0]:'—'}</td><td>${Object.keys(freq).length} levels</td></tr>`;}
+      });
+      html+=`</tbody></table>`;
+    }
+    if(sects.analyses&&analyses.length>0){
+      html+=`<h2>Statistical Results</h2>`;
+      analyses.forEach((a,i)=>{
+        const r=a.result;const label=TESTS.find(t=>t.id===a.test)?.l||a.test;
+        html+=`<div class="result-block"><h3>${i+1}. ${label}</h3>`;
+        if(r._type==='descriptive'&&r.stats){
+          html+=`<table><thead><tr><th>Variable</th><th>n</th><th>Mean</th><th>SD</th><th>Median</th><th>Min</th><th>Max</th></tr></thead><tbody>`;
+          r.stats.forEach(s=>{html+=`<tr><td>${s.col}</td><td>${s.n}</td><td>${fmt(s.mean,3)}</td><td>${fmt(s.sd,3)}</td><td>${fmt(s.median,3)}</td><td>${fmt(s.min,3)}</td><td>${fmt(s.max,3)}</td></tr>`;});
+          html+=`</tbody></table>`;
+        }else if(r.t!==undefined){html+=`<p>t(${fmt(r.df,1)}) = ${fmt(r.t,3)}, p ${fmtP(r.p)} <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span>. 95% CI: [${fmt(r.ci_lo,3)}, ${fmt(r.ci_hi,3)}]. Cohen's d = ${fmt(r.d,3)}.</p>`;}
+        else if(r.F!==undefined){html+=`<p>F(${r.dfb},${r.dfw}) = ${fmt(r.F,3)}, p ${fmtP(r.p)} <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span>. &eta;&sup2; = ${fmt(r.eta2,3)}.</p>`;}
+        else if(r.r2!==undefined){html+=`<p>R&sup2; = ${fmt(r.r2,4)} (Adj. R&sup2; = ${fmt(r.r2adj,4)}). F(${r.df_m},${r.df_e}) = ${fmt(r.f,3)}, p ${fmtP(r.p_f)}. RMSE = ${fmt(r.rmse,4)}.</p>`;}
+        else if(r.chi2!==undefined){html+=`<p>&chi;&sup2;(${r.df}) = ${fmt(r.chi2,3)}, p ${fmtP(r.p)} <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span>. Cram&eacute;r's V = ${fmt(r.cramersV,3)}.</p>`;}
+        html+=`</div>`;
+      });
+    }
+    if(sects.methods){
+      html+=`<h2>Methods</h2><div class="note"><p><strong>Statistical Computing:</strong> All analyses were performed using StatLab Pro (v1.0), a browser-based statistical computing environment built with React and JavaScript. Statistical distributions (t, F, &chi;&sup2;, normal) are computed using exact numerical algorithms including the regularized incomplete beta and gamma functions.</p><p><strong>Significance thresholds:</strong> Results are considered statistically significant at &alpha; = .05. Confidence intervals are constructed at the 95% level unless specified. Effect sizes are reported where applicable: Cohen's d for t-tests, &eta;&sup2; for ANOVA, and R&sup2; for regression.</p><p><strong>Reproducibility:</strong> This analysis was conducted locally. No data was transmitted externally. To regenerate this report, reopen the project in StatLab Pro.</p></div>`;
+    }
+    html+=`<footer>StatLab Pro &middot; Local-first statistical analysis &middot; All computations performed in-browser &middot; ${new Date().getFullYear()}</footer></body></html>`;
+    setGen(html);
+  }
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%'}}>
+      <div className="module-header"><div className="module-title">Report &amp; Export</div><div className="module-subtitle">Generate publication-ready outputs</div></div>
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        <div className="side-panel" style={{width:272,background:'var(--paper)'}}>
+          <div style={{fontWeight:600,fontSize:13,marginBottom:14}}>Report Settings</div>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Title</label>
+            <input className="input-field" value={title} onChange={e=>setTitle(e.target.value)} style={{width:'100%',fontSize:12}}/>
+          </div>
+          <div style={{marginBottom:16}}>
+            <div style={{fontWeight:600,fontSize:12,marginBottom:8}}>Sections</div>
+            {[['intro','Introduction'],['data',`Data Description${ds?` (${ds.name})`:''}`],['analyses',`Analyses (${state.analyses.length})`],['methods','Methods & Notes']].map(([k,l])=>(
+              <label key={k} className="check-row" style={{padding:'5px 0'}}>
+                <input type="checkbox" checked={sects[k]} onChange={e=>setSects(s=>({...s,[k]:e.target.checked}))}/>
+                <span style={{fontSize:12}}>{l}</span>
+              </label>
+            ))}
+          </div>
+          <button className="btn btn-gold" onClick={generate} style={{width:'100%',marginBottom:10}}>Generate Report</button>
+          {gen&&(
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              <button className="btn btn-primary btn-sm" onClick={()=>{const b=new Blob([gen],{type:'text/html'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=(title.replace(/\s+/g,'_')||'report')+'.html';a.click();URL.revokeObjectURL(u);}}>⬇ Download HTML</button>
+              <button className="btn btn-secondary btn-sm" onClick={()=>{const u=URL.createObjectURL(new Blob([gen],{type:'text/html'}));window.open(u,'_blank');}}>Open in New Tab</button>
+            </div>
+          )}
+          <div style={{marginTop:24,paddingTop:16,borderTop:'1px solid var(--border)'}}>
+            <div style={{fontWeight:600,fontSize:12,marginBottom:10}}>Export Datasets</div>
+            {state.datasets.length===0&&<div style={{fontSize:12,color:'var(--text-muted)'}}>No datasets loaded.</div>}
+            {state.datasets.map(d=>(
+              <div key={d.id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'7px 0',borderBottom:'1px solid var(--border)',fontSize:12}}>
+                <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginRight:8}}>{d.name}</span>
+                <div style={{display:'flex',gap:4,flexShrink:0}}>
+                  <button className="btn btn-secondary btn-xs" onClick={()=>dlCSV(d.rows,d.name+'.csv')}>CSV</button>
+                  <button className="btn btn-secondary btn-xs" onClick={()=>dlJSON(d.rows,d.name+'.json')}>JSON</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {state.analyses.length>0&&(
+            <div style={{marginTop:16}}>
+              <div style={{fontWeight:600,fontSize:12,marginBottom:6}}>Export Analyses</div>
+              <button className="btn btn-secondary btn-sm" style={{width:'100%'}} onClick={()=>dlJSON(state.analyses,'analyses.json')}>Download All Analyses JSON</button>
+            </div>
+          )}
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:24}}>
+          {gen?(
+            <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+                <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:18,fontWeight:600}}>Report Preview</h3>
+                <span style={{fontSize:12,color:'var(--text-muted)'}}>{(gen.length/1024).toFixed(1)} KB</span>
+              </div>
+              <div style={{border:'1px solid var(--border)',borderRadius:10,overflow:'hidden',boxShadow:'0 2px 12px rgba(0,0,0,0.06)'}}>
+                <iframe srcDoc={gen} style={{width:'100%',height:'72vh',border:'none'}} title="Report Preview"/>
+              </div>
+            </div>
+          ):(
+            <div className="empty-state">
+              <div style={{fontSize:52,marginBottom:14,opacity:0.15}}>◧</div>
+              <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:20,marginBottom:8}}>No Report Generated</h3>
+              <p style={{color:'var(--text-muted)',fontSize:13,maxWidth:380,lineHeight:1.7}}>Configure your report settings and click "Generate Report" to create a publication-ready HTML document with all your analyses.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TUTORIAL MODULE
+═══════════════════════════════════════════════════════════ */
+const TUTORIAL_STEPS=[
+  {id:'load',title:'Load a Dataset',icon:'📂',color:'#3B82F6',
+    desc:'StatLab Pro works locally — no data leaves your browser. Start by loading the built-in Iris dataset to follow along.',
+    action:'Load Iris Dataset',detail:'The Iris dataset has 150 rows and 5 columns: 4 numeric measurements (sepal & petal dimensions) and one categorical species label — perfect for demonstrating multiple analysis types.'},
+  {id:'inspect',title:'Inspect Your Variables',icon:'🔍',color:'#8B5CF6',
+    desc:'Visit the Data Explorer and click any column header. A statistics panel slides in on the right showing mean, SD, quartiles, and distribution bars for that variable.',
+    action:'Go to Data Explorer',detail:'The Column Inspector auto-detects numeric vs. text columns and shows appropriate summaries. Numeric columns get descriptive stats; text columns get frequency tables.'},
+  {id:'visualize',title:'Build a Scatter Plot',icon:'📊',color:'#22C55E',
+    desc:'In the Visualization Studio, drag petal_length to the X Axis slot and petal_width to Y Axis. Drag species to Color / Group. Hit Render.',
+    action:'Go to Visualization',detail:'The chart uses Plotly.js and is fully interactive — zoom, pan, hover for values. Export to PNG or SVG for papers and presentations.'},
+  {id:'ttest',title:'Run a t-Test',icon:'⚖',color:'#C8903E',
+    desc:'In the Analysis Lab, click "Compare Groups" then "Welch\'s t-Test". Drag sepal_length to Outcome and species to Group. Select setosa vs. versicolor.',
+    action:'Go to Analysis Lab',detail:'StatLab uses Welch\'s t-test by default (robust to unequal variances). Results include Cohen\'s d, 95% CI on the difference, and a full significance table.'},
+  {id:'anova',title:'One-Way ANOVA',icon:'∑',color:'#EF4444',
+    desc:'Still in Analysis Lab → Compare Groups → One-Way ANOVA. Set sepal_length as the outcome and species as the group. Run it to see the full ANOVA table and Tukey HSD.',
+    action:'Go to Analysis Lab',detail:'ANOVA tests whether any group means differ. The post-hoc Tukey HSD compares all pairs. Effect size η² tells you practical significance.'},
+  {id:'regression',title:'Fit a Regression Model',icon:'⌁',color:'#0891B2',
+    desc:'Open the Model Builder. Select petal_length as the outcome. Click petal_width and sepal_length as predictors. Fit the OLS model.',
+    action:'Go to Model Builder',detail:'The OLS model reports R², adjusted R², standardized β coefficients, t-statistics, and 95% CIs for each predictor. The model formula appears in the config panel as you build it.'},
+  {id:'report',title:'Export a Report',icon:'📄',color:'#6B7280',
+    desc:'Finally, open Report & Export. Your analyses accumulate automatically. Toggle the sections you want, give the report a title, and click Generate Report.',
+    action:'Go to Report',detail:'Reports are self-contained HTML files — open in any browser, share by email, or print to PDF. All results and tables are included with proper statistical notation.'},
+];
+
+function TutorialModule({state,dispatch}){
+  const[active,setActive]=useState(0);
+  const[completed,setCompleted]=useState(new Set());
+  const step=TUTORIAL_STEPS[active];
+  const progress=(completed.size/TUTORIAL_STEPS.length)*100;
+
+  const MODULE_MAP={load:'data',inspect:'data',visualize:'visualize',ttest:'analyze',anova:'analyze',regression:'models',report:'report'};
+
+  function markAndGo(){
+    setCompleted(s=>new Set([...s,step.id]));
+    // Auto-load iris if needed
+    if(step.id==='load'&&!state.datasets.find(d=>d.name==='Iris Dataset')){
+      const s=SAMPLES.iris;
+      dispatch({type:'ADD_DS',ds:{id:'ds_'+Date.now(),name:s.name,columns:s.cols,rows:s.rows,types:s.types,createdAt:Date.now()}});
+    }
+    dispatch({type:'SET_MODULE',m:MODULE_MAP[step.id]||'data'});
+  }
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%',overflowY:'auto'}}>
+      <div className="module-header" style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <div>
+          <div className="module-title">Interactive Tutorial</div>
+          <div className="module-subtitle">A guided walkthrough of a complete analysis workflow</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <span style={{fontSize:12,color:'var(--text-muted)'}}>{completed.size}/{TUTORIAL_STEPS.length} completed</span>
+          <div className="progress-bar" style={{width:120}}><div className="progress-fill" style={{width:`${progress}%`}}/></div>
+        </div>
+      </div>
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        {/* Step nav */}
+        <div style={{width:210,borderRight:'1px solid var(--border)',overflowY:'auto',background:'var(--paper)',padding:'12px 0',flexShrink:0}}>
+          {TUTORIAL_STEPS.map((s,i)=>(
+            <div key={s.id} onClick={()=>setActive(i)} style={{margin:'2px 8px',padding:'10px 12px',borderRadius:8,cursor:'pointer',background:active===i?'white':'transparent',border:`1px solid ${active===i?'var(--border)':'transparent'}`,boxShadow:active===i?'0 1px 4px rgba(0,0,0,0.06)':'none',transition:'all 0.15s'}}>
+              <div style={{display:'flex',alignItems:'center',gap:9}}>
+                <div style={{width:28,height:28,borderRadius:7,background:completed.has(s.id)?'rgba(34,197,94,0.12)':active===i?s.color+'1A':'var(--paper-dark)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0,border:`1px solid ${completed.has(s.id)?'rgba(34,197,94,0.25)':'transparent'}`}}>
+                  {completed.has(s.id)?'✓':s.icon}
+                </div>
+                <div>
+                  <div style={{fontSize:12,fontWeight:active===i?600:500,color:active===i?'var(--text)':'var(--text-muted)',lineHeight:1.3}}>{s.title}</div>
+                  <div style={{fontSize:10,color:'var(--text-light)',marginTop:1}}>Step {i+1}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+          <div style={{margin:'20px 12px',padding:'12px',background:'white',border:'1px solid var(--border)',borderRadius:9}}>
+            <div style={{fontSize:11,fontWeight:600,color:'var(--text)',marginBottom:6}}>Workflow covered</div>
+            {['Import data','Inspect variables','Visualize distributions','Hypothesis testing','Regression modeling','Export & report'].map(f=>(
+              <div key={f} style={{fontSize:11,color:'var(--text-muted)',display:'flex',gap:6,marginBottom:4}}>
+                <span style={{color:'var(--gold)',fontWeight:700}}>→</span>{f}
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Step content */}
+        <div style={{flex:1,overflowY:'auto',padding:'36px 40px',maxWidth:780}}>
+          <div key={active} className="module-enter">
+            <div style={{display:'flex',align:'center',gap:10,marginBottom:6}}>
+              <span className="demo-badge">Step {active+1} of {TUTORIAL_STEPS.length}</span>
+              {completed.has(step.id)&&<span className="demo-badge" style={{background:'rgba(34,197,94,0.1)',color:'#16A34A',borderColor:'rgba(34,197,94,0.2)'}}>✓ Completed</span>}
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:16,marginTop:12}}>
+              <div style={{width:52,height:52,borderRadius:14,background:step.color+'18',border:`1px solid ${step.color}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:26,flexShrink:0}}>{step.icon}</div>
+              <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:28,fontWeight:600,color:'var(--text)',letterSpacing:'-0.02em',lineHeight:1.2}}>{step.title}</h2>
+            </div>
+            <p style={{fontSize:15,lineHeight:1.85,color:'var(--text)',marginBottom:20}}>{step.desc}</p>
+            <div style={{background:'white',border:'1px solid var(--border)',borderRadius:10,padding:'16px 20px',marginBottom:24}}>
+              <div style={{fontSize:11,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>💡 Detail</div>
+              <p style={{fontSize:13,lineHeight:1.75,color:'var(--text-muted)'}}>{step.detail}</p>
+            </div>
+            <div style={{display:'flex',gap:12,alignItems:'center'}}>
+              <button className="btn btn-gold" onClick={markAndGo} style={{fontSize:14,padding:'10px 22px'}}>
+                {step.action} →
+              </button>
+              {active>0&&<button className="btn btn-secondary" onClick={()=>setActive(a=>a-1)} style={{fontSize:13}}>← Previous</button>}
+              {active<TUTORIAL_STEPS.length-1&&<button className="btn btn-secondary" onClick={()=>setActive(a=>a+1)} style={{fontSize:13}}>Skip →</button>}
+            </div>
+            {/* Progress mini-map */}
+            <div style={{marginTop:40,display:'flex',gap:6}}>
+              {TUTORIAL_STEPS.map((s,i)=>(
+                <div key={s.id} onClick={()=>setActive(i)} style={{height:4,flex:1,borderRadius:3,background:completed.has(s.id)?'var(--gold)':i===active?'var(--blue)':'var(--border)',cursor:'pointer',transition:'background 0.2s'}} title={s.title}/>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ROOT APP
+═══════════════════════════════════════════════════════════ */
+function App(){
+  const[state,dispatch]=useReducer(reducer,initialState);
+  const saveTimer=useRef(null);
+
+  // Autosave to IndexedDB with debounce
+  useEffect(()=>{
+    if(saveTimer.current)clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(async()=>{
+      try{
+        const payload={
+          id:state.projectId,name:state.projectName,
+          datasets:state.datasets.map(d=>({...d,rows:d.rows?.slice(0,8000)})),
+          analyses:state.analyses.slice(0,100),
+          charts:state.charts,
+          savedAt:Date.now()
+        };
+        await dbSave(payload);
+        dispatch({type:'SAVED',t:Date.now()});
+      }catch(e){console.warn('Autosave failed',e);}
+    },2200);
+    return()=>clearTimeout(saveTimer.current);
+  },[state.datasets,state.analyses,state.charts,state.projectName]);
+
+  // Load most recent project on mount
+  useEffect(()=>{
+    dbList().then(projects=>{
+      if(!projects.length)return;
+      const latest=projects.sort((a,b)=>(b.savedAt||0)-(a.savedAt||0))[0];
+      if(latest?.datasets?.length>0){
+        dispatch({type:'LOAD',s:{...latest,activeId:latest.datasets[0]?.id||null}});
+      }
+    }).catch(()=>{});
+  },[]);
+
+  const renderModule=()=>{
+    const p={state,dispatch};
+    switch(state.module){
+      case'home':return<HomeModule {...p}/>;
+      case'data':return<DataModule {...p}/>;
+      case'clean':return<CleanModule {...p}/>;
+      case'visualize':return<VisualizeModule {...p}/>;
+      case'analyze':return<AnalyzeModule {...p}/>;
+      case'models':return<ModelsModule {...p}/>;
+      case'tutorial':return<TutorialModule {...p}/>;
+      case'report':return<ReportModule {...p}/>;
+      default:return<HomeModule {...p}/>;
+    }
+  };
+
+  return(
+    <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+      <Sidebar state={state} dispatch={dispatch}/>
+      <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column',background:'var(--paper)'}}>
+        <div style={{flex:1,overflow:'hidden'}}>
+          {renderModule()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
