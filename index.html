@@ -267,6 +267,95 @@ function chiSqIndep(rows,c1,c2){
   return{label:'Chi-Square Test',chi2,df,p,cramersV:Math.sqrt(chi2/(n*(Math.min(v1.length,v2.length)-1))),v1,v2,obs,exp,n};
 }
 
+/* ── Wilcoxon Signed-Rank ── */
+function wilcoxonSR(x,y){
+  const pairs=x.map((xi,i)=>[xi,y[i]]).filter(([a,b])=>!nan(a)&&!nan(b));
+  const diffs=pairs.map(([a,b])=>a-b).filter(d=>d!==0);
+  const n=diffs.length;
+  if(n<5)return{label:'Wilcoxon Signed-Rank Test',W:NaN,z:NaN,p:NaN,n};
+  const items=diffs.map((d,i)=>({abs:Math.abs(d),sign:Math.sign(d),i})).sort((a,b)=>a.abs-b.abs);
+  const ranks=new Array(n);
+  for(let i=0;i<n;){let j=i;while(j<n&&items[j].abs===items[i].abs)j++;const r=(i+j-1)/2+1;for(let k=i;k<j;k++)ranks[k]=r;i=j;}
+  const Wplus=items.reduce((s,item,i)=>item.sign>0?s+ranks[i]:s,0);
+  const Wminus=items.reduce((s,item,i)=>item.sign<0?s+ranks[i]:s,0);
+  const W=Math.min(Wplus,Wminus);
+  const mu=n*(n+1)/4;
+  const sigma=Math.sqrt(n*(n+1)*(2*n+1)/24);
+  const z=(W-mu+0.5)/sigma;
+  const p=2*(1-normalCDF(Math.abs(z)));
+  return{label:'Wilcoxon Signed-Rank Test',W,Wplus,Wminus,z,p,n,mu,sigma};
+}
+
+/* ── Kruskal-Wallis H Test ── */
+function kruskalWallis(rows,dep,grp){
+  const groups={};
+  rows.forEach(r=>{const g=String(r[grp]);const v=Number(r[dep]);if(r[grp]!==null&&r[grp]!==''&&!isNaN(v)){if(!groups[g])groups[g]=[];groups[g].push(v);}});
+  const gnames=Object.keys(groups);const k=gnames.length;
+  if(k<2)return{label:'Kruskal-Wallis H Test',H:NaN,p:NaN,k,N:0};
+  const all=[];gnames.forEach(g=>groups[g].forEach(v=>all.push({g,v})));
+  const N=all.length;
+  all.sort((a,b)=>a.v-b.v);
+  for(let i=0;i<N;){let j=i;while(j<N&&all[j].v===all[i].v)j++;const r=(i+j-1)/2+1;for(let k=i;k<j;k++)all[k].rank=r;i=j;}
+  const rs={};gnames.forEach(g=>rs[g]=0);all.forEach(item=>rs[item.g]+=item.rank);
+  const H=(12/(N*(N+1)))*gnames.reduce((s,g)=>s+(rs[g]**2)/groups[g].length,0)-3*(N+1);
+  const df=k-1;const p=1-chi2CDF(H,df);
+  const gstats=gnames.map(g=>({group:g,n:groups[g].length,mean:vmean(groups[g]),median:vmedian(groups[g]),sd:vstd(groups[g]),meanRank:rs[g]/groups[g].length}));
+  return{label:'Kruskal-Wallis H Test',H,df,p,N,k,groups:gstats};
+}
+
+/* ── Ridge Regression (L2 regularisation) ── */
+function ridgeRegression(y_vals,X_mat,lambda=1.0){
+  const n=y_vals.length;
+  const X=X_mat.map(row=>[1,...row]);const k=X[0].length;
+  const XtX=Array.from({length:k},(_,i)=>Array.from({length:k},(_,j)=>X.reduce((s,row)=>s+row[i]*row[j],0)+(i===j&&i>0?lambda:0)));
+  const Xty=Array.from({length:k},(_,i)=>X.reduce((s,row,ri)=>s+row[i]*y_vals[ri],0));
+  const inv=invertMatrix(XtX);if(!inv)return null;
+  const beta=inv.map(row=>row.reduce((s,v,j)=>s+v*Xty[j],0));
+  const fitted=X.map(row=>row.reduce((s,v,j)=>s+v*beta[j],0));
+  const resid=y_vals.map((y,i)=>y-fitted[i]);
+  const sse=resid.reduce((s,r)=>s+r**2,0);
+  const ymean=vmean(y_vals);const sst=y_vals.reduce((s,y)=>s+(y-ymean)**2,0);
+  const r2=1-sse/sst;const df_e=n-k;const mse=sse/df_e;
+  const se_b=inv.map((row,i)=>Math.sqrt(mse*row[i]));
+  const t_v=beta.map((b,i)=>b/se_b[i]);
+  const p_v=t_v.map(t=>2*(1-tCDF(Math.abs(t),df_e)));
+  const tc=tCrit(df_e,0.025);
+  return{beta,se_b,t_v,p_v,fitted,residuals:resid,r2,lambda,n,df_e,mse,rmse:Math.sqrt(mse),ci_lo:beta.map((b,i)=>b-tc*se_b[i]),ci_hi:beta.map((b,i)=>b+tc*se_b[i])};
+}
+
+/* ── Negative Binomial GLM (log-link, IRLS, MoM θ) ── */
+function negativeBinomialReg(y_vals,X_mat,maxIter=150,tol=1e-7){
+  const n=y_vals.length;
+  const X=X_mat.map(row=>[1,...row]);const k=X[0].length;
+  const pois=poissonReg(y_vals,X_mat,50);if(!pois)return null;
+  let mu=[...pois.fitted];
+  const pearsonX2=y_vals.reduce((s,y,i)=>{const mi=Math.max(mu[i],1e-8);return s+(y-mi)**2/mi;},0)/(n-k);
+  let theta=Math.min(1000,Math.max(0.5,1/Math.max(pearsonX2-1,0.01)));
+  let beta=[...pois.beta];
+  for(let iter=0;iter<maxIter;iter++){
+    mu=X.map(row=>Math.exp(Math.min(30,row.reduce((s,v,j)=>s+v*beta[j],0))));
+    const W=mu.map(mi=>mi/(1+mi/theta));
+    const z=X.map((row,i)=>{const eta=row.reduce((s,v,j)=>s+v*beta[j],0);return eta+(y_vals[i]-mu[i])/mu[i];});
+    const XtWX=Array.from({length:k},(_,a)=>Array.from({length:k},(_,b)=>X.reduce((s,row,i)=>s+row[a]*W[i]*row[b],0)));
+    const XtWz=Array.from({length:k},(_,a)=>X.reduce((s,row,i)=>s+row[a]*W[i]*z[i],0));
+    const inv=invertMatrix(XtWX);if(!inv)break;
+    const nb=inv.map(row=>row.reduce((s,v,j)=>s+v*XtWz[j],0));
+    const maxD=nb.reduce((mx,b,i)=>Math.max(mx,Math.abs(b-beta[i])),0);
+    beta=nb;if(maxD<tol)break;
+  }
+  mu=X.map(row=>Math.exp(Math.min(30,row.reduce((s,v,j)=>s+v*beta[j],0))));
+  const W_f=mu.map(mi=>mi/(1+mi/theta));
+  const H=Array.from({length:k},()=>Array(k).fill(0));
+  for(let i=0;i<n;i++)for(let a=0;a<k;a++)for(let b=0;b<k;b++)H[a][b]+=X[i][a]*W_f[i]*X[i][b];
+  const Hinv=invertMatrix(H);
+  const se=Hinv?Hinv.map((row,i)=>Math.sqrt(Math.max(0,row[i]))):beta.map(()=>NaN);
+  const z_v=beta.map((b,i)=>b/se[i]);
+  const p_v=z_v.map(z=>2*(1-normalCDF(Math.abs(z))));
+  const ll=y_vals.reduce((s,y,i)=>{const mi=mu[i];return s+lgamma(y+theta)-lgamma(theta)-lgamma(y+1)+theta*Math.log(theta/(theta+mi))+y*Math.log(mi/(theta+mi));},0);
+  const aic=-2*ll+2*(k+1);
+  return{beta,se,z_v,p_v,fitted:mu,theta,ll,aic,n,k,ci_lo:beta.map((b,i)=>b-1.96*se[i]),ci_hi:beta.map((b,i)=>b+1.96*se[i]),irr:beta.map(b=>Math.exp(b))};
+}
+
 /* ═══════════════════════════════════════════════════════════
    DATA UTILITIES
 ═══════════════════════════════════════════════════════════ */
@@ -858,67 +947,89 @@ function CleanModule({state,dispatch}){
 // slotDefs: [{key, label, hint, multi?, types?}]
 // values: {key: colName | null}
 // onChange: fn(newValues)
-function DragVarPanel({ds, slotDefs, values, onChange}){
+function DragVarPanel({ds,slotDefs,values,onChange}){
   const[dragging,setDragging]=useState(null); // {col, fromSlot}
   const[overSlot,setOverSlot]=useState(null);
+  const enterCounters=useRef({});
 
-  const assigned=Object.values(values).filter(Boolean).flat();
+  // Global dragend clears state if drop lands outside any valid zone
+  useEffect(()=>{
+    const clear=()=>{setDragging(null);setOverSlot(null);};
+    document.addEventListener('dragend',clear);
+    return()=>document.removeEventListener('dragend',clear);
+  },[]);
+
+  const assigned=Object.values(values).filter(Boolean);
   const available=ds?ds.columns.filter(c=>!assigned.includes(c)):[];
 
-  function onDragStart(e,col,fromSlot=null){
+  function onDragStart(e,col,fromSlot='pool'){
     setDragging({col,fromSlot});
     e.dataTransfer.effectAllowed='move';
     e.dataTransfer.setData('text/plain',col);
   }
+
+  function enterZone(key){
+    enterCounters.current[key]=(enterCounters.current[key]||0)+1;
+    setOverSlot(key);
+  }
+  function leaveZone(key){
+    enterCounters.current[key]=Math.max(0,(enterCounters.current[key]||1)-1);
+    if(enterCounters.current[key]===0) setOverSlot(s=>s===key?null:s);
+  }
+  function resetZone(key){enterCounters.current[key]=0;}
+
   function onDropSlot(e,slotKey){
-    e.preventDefault();
+    e.preventDefault();resetZone(slotKey);setOverSlot(null);
     if(!dragging)return;
     const def=slotDefs.find(s=>s.key===slotKey);
-    if(def?.types&&!def.types.includes(ds.types[dragging.col])){
-      setOverSlot(null);setDragging(null);return;
-    }
+    if(def?.types&&!def.types.includes(ds.types[dragging.col])){setDragging(null);return;}
     const next={...values};
-    if(dragging.fromSlot&&dragging.fromSlot!=='pool')next[dragging.fromSlot]=null;
+    if(dragging.fromSlot&&dragging.fromSlot!=='pool') next[dragging.fromSlot]=null;
     next[slotKey]=dragging.col;
-    onChange(next);
-    setOverSlot(null);setDragging(null);
-  }
-  function onDropPool(e){
-    e.preventDefault();
-    if(dragging?.fromSlot&&dragging.fromSlot!=='pool'){
-      onChange({...values,[dragging.fromSlot]:null});
-    }
-    setOverSlot(null);setDragging(null);
+    onChange(next);setDragging(null);
   }
 
-  const chipClass=(col)=>`var-chip ${ds&&ds.types[col]==='numeric'?'num':'cat'}${dragging?.col===col&&dragging?.fromSlot==='pool'?' dragging':''}`;
+  function onDropPool(e){
+    e.preventDefault();resetZone('pool');setOverSlot(null);
+    if(dragging?.fromSlot&&dragging.fromSlot!=='pool'){onChange({...values,[dragging.fromSlot]:null});}
+    setDragging(null);
+  }
 
   return(
     <div style={{display:'flex',flexDirection:'column',gap:10}}>
-      {/* Variable Pool */}
+      {/* Variable pool */}
       <div>
         <div style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Variables — drag to slots below</div>
-        <div
-          className={`var-pool${overSlot==='pool'?' over':''}`}
-          onDragOver={e=>{e.preventDefault();setOverSlot('pool');}}
-          onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOverSlot(null);}}
+        <div className={`var-pool${overSlot==='pool'?' over':''}`}
+          onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move';}}
+          onDragEnter={()=>enterZone('pool')}
+          onDragLeave={()=>leaveZone('pool')}
           onDrop={onDropPool}
         >
-          {available.map(col=>(
-            <div key={col} className={chipClass(col)}
-              draggable onDragStart={e=>onDragStart(e,col,'pool')} onDragEnd={()=>setDragging(null)}
-              title={`${col} · ${ds.types[col]}`}
-            >
-              <span className="var-badge">{ds.types[col]==='numeric'?'#':'T'}</span>{col}
-            </div>
-          ))}
+          {available.map(col=>{
+            const isDraggingThis=dragging?.col===col;
+            return(
+              <div key={col}
+                className={`var-chip ${ds&&ds.types[col]==='numeric'?'num':'cat'}${isDraggingThis?' dragging':''}`}
+                draggable onDragStart={e=>onDragStart(e,col,'pool')} onDragEnd={()=>{setDragging(null);setOverSlot(null);}}
+                title={`${col} · ${ds.types[col]}`}
+              >
+                <span className="var-badge">{ds.types[col]==='numeric'?'#':'T'}</span>{col}
+              </div>
+            );
+          })}
           {!available.length&&<span style={{fontSize:11,color:'var(--text-light)',fontStyle:'italic',padding:'2px 4px'}}>All variables assigned</span>}
         </div>
       </div>
-      {/* Drop Slots */}
+
+      {/* Drop slots */}
       {slotDefs.map(def=>{
         const val=values[def.key];
         const isOver=overSlot===def.key;
+        const isIncompatible=dragging&&def.types&&!def.types.includes(ds?.types[dragging.col]);
+        const borderColor=isOver?(isIncompatible?'var(--danger)':'var(--blue)'):val?'var(--border)':'#D5D2CC';
+        const bg=isOver?(isIncompatible?'rgba(239,68,68,0.04)':'rgba(74,127,168,0.06)'):val?'white':'rgba(247,246,242,0.6)';
+
         return(
           <div key={def.key}>
             <div style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:5,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -926,22 +1037,23 @@ function DragVarPanel({ds, slotDefs, values, onChange}){
               {def.types&&<span style={{fontWeight:400,color:'var(--text-light)',fontSize:9,background:'var(--paper-dark)',padding:'1px 5px',borderRadius:4}}>{def.types.join(' · ')}</span>}
             </div>
             <div
-              className={`drop-slot${isOver?' over':''}${val?' filled':''}`}
-              style={{background:isOver?'rgba(74,127,168,0.05)':val?'white':'rgba(247,246,242,0.6)'}}
-              onDragOver={e=>{e.preventDefault();setOverSlot(def.key);}}
-              onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOverSlot(null);}}
+              className={`drop-slot${isOver&&!isIncompatible?' over':''}${val?' filled':''}`}
+              style={{borderColor,background,transition:'border-color 0.12s,background 0.12s',cursor:isIncompatible&&isOver?'not-allowed':'default'}}
+              onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=isIncompatible?'none':'move';}}
+              onDragEnter={()=>enterZone(def.key)}
+              onDragLeave={()=>leaveZone(def.key)}
               onDrop={e=>onDropSlot(e,def.key)}
             >
               {val?(
                 <div className={`var-chip ${ds.types[val]==='numeric'?'num':'cat'}`}
-                  draggable onDragStart={e=>onDragStart(e,val,def.key)} onDragEnd={()=>setDragging(null)}
+                  draggable onDragStart={e=>onDragStart(e,val,def.key)} onDragEnd={()=>{setDragging(null);setOverSlot(null);}}
                 >
                   <span className="var-badge">{ds.types[val]==='numeric'?'#':'T'}</span>
                   {val}
                   <span onClick={()=>onChange({...values,[def.key]:null})} style={{marginLeft:5,cursor:'pointer',opacity:0.45,fontSize:14,lineHeight:1}}>×</span>
                 </div>
               ):(
-                <span className="slot-hint">{def.hint||`Drop ${def.label}`}</span>
+                <span className="slot-hint">{isIncompatible?`⛔ Needs ${def.types?.join('/')}`:def.hint||`Drop ${def.label}`}</span>
               )}
             </div>
           </div>
@@ -957,6 +1069,16 @@ function DragVarPanel({ds, slotDefs, values, onChange}){
 function VisualizeModule({state,dispatch}){
   const[cfg,setCfg]=useState({type:'scatter',x:'',y:'',color:'',title:''});
   const[rendered,setRendered]=useState(false);
+  // Clear slots that violate the new chart type's constraints
+  useEffect(()=>{
+    const numOnly=['histogram','box','violin'];
+    if(numOnly.includes(cfg.type)&&cfg.x&&ds&&ds.types[cfg.x]!=='numeric'){
+      setCfg(c=>({...c,x:''}));
+    }
+    if(cfg.y&&ds&&ds.types[cfg.y]!=='numeric'){
+      setCfg(c=>({...c,y:''}));
+    }
+  },[cfg.type]); // eslint-disable-line
   const chartRef=useRef(null);
   const ds=state.datasets.find(d=>d.id===state.activeId);
   const nc=ds?numCols(ds):[];const cc=ds?catCols(ds):[];const ac=ds?ds.columns:[];
@@ -1119,43 +1241,74 @@ const TESTS=[
   {id:'correlation',l:'Correlation Analysis',g:'Association'},
   {id:'regression',l:'Multiple Linear Regression',g:'Models'},
   {id:'mannwhitney',l:'Mann-Whitney U',g:'Nonparametric'},
-  {id:'chisq',l:'Chi-Square Independence',g:'Nonparametric'},
+  {id:'wilcoxon',l:'Wilcoxon Signed-Rank',g:'Nonparametric'},
+  {id:'kruskal',l:'Kruskal-Wallis H Test',g:'Nonparametric'},
+  {id:'chisq',l:'Chi-Square Independence',g:'Categorical'},
 ];
 
-/* ═══════════════════════════════════════════════════════════
-   ANALYSIS WIZARD (Intent-First Navigation)
-═══════════════════════════════════════════════════════════ */
+/* Intent cards shown on the wizard home screen */
 const WIZARD_INTENTS=[
-  {id:'compare',icon:'⚖',label:'Compare Groups',desc:'Test if means/distributions differ',color:'#3B82F6',bgColor:'rgba(59,130,246,0.1)'},
-  {id:'relate',icon:'⟳',label:'Relationships',desc:'Correlations between variables',color:'#8B5CF6',bgColor:'rgba(139,92,246,0.1)'},
+  {id:'compare',icon:'⚖',label:'Compare Groups',desc:'Means, medians & distributions',color:'#3B82F6',bgColor:'rgba(59,130,246,0.1)'},
+  {id:'relate',icon:'⟳',label:'Relationships',desc:'Correlation & regression',color:'#8B5CF6',bgColor:'rgba(139,92,246,0.1)'},
   {id:'summarize',icon:'≡',label:'Describe Data',desc:'Summary statistics & distributions',color:'#22C55E',bgColor:'rgba(34,197,94,0.1)'},
-  {id:'model',icon:'⌁',label:'Predict / Model',desc:'Regression & linear models',color:'#C8903E',bgColor:'rgba(200,144,62,0.1)'},
-  {id:'nonparam',icon:'∼',label:'Non-Parametric',desc:'Distribution-free tests',color:'#EF4444',bgColor:'rgba(239,68,68,0.1)'},
+  {id:'model',icon:'⌁',label:'Predict / Model',desc:'Regression & GLM families',color:'#C8903E',bgColor:'rgba(200,144,62,0.1)'},
   {id:'categorical',icon:'χ',label:'Categorical',desc:'Chi-square & contingency tables',color:'#0891B2',bgColor:'rgba(8,145,178,0.1)'},
 ];
+
+/* Each intent exposes sectioned test lists (parametric / nonparametric / …).
+   redirect: 'm' navigates to that module instead of running in Analyze Lab. */
 const INTENT_TESTS={
   compare:[
-    {id:'ttest2',label:"Welch's t-Test",note:'Two groups, normal, unequal var'},
-    {id:'ttest1',label:'One-Sample t-Test',note:'Compare mean to known value'},
-    {id:'ttestpaired',label:'Paired t-Test',note:'Repeated measures / matched pairs'},
-    {id:'anova1',label:'One-Way ANOVA',note:'Three or more groups'},
+    {heading:'Parametric',tagColor:'#3B82F6',tagBg:'rgba(59,130,246,0.09)',tests:[
+      {id:'ttest2',label:"Welch's t-Test",note:'Two independent groups'},
+      {id:'ttest1',label:'One-Sample t-Test',note:'Mean vs. known reference value'},
+      {id:'ttestpaired',label:'Paired t-Test',note:'Matched pairs / within-subject design'},
+      {id:'anova1',label:'One-Way ANOVA',note:'3+ groups · post-hoc Tukey HSD'},
+    ]},
+    {heading:'Non-Parametric',tagColor:'#F59E0B',tagBg:'rgba(245,158,11,0.09)',tests:[
+      {id:'mannwhitney',label:'Mann-Whitney U',note:'Two independent groups · rank-based'},
+      {id:'wilcoxon',label:'Wilcoxon Signed-Rank',note:'Paired data · rank-based'},
+      {id:'kruskal',label:'Kruskal-Wallis H',note:'3+ groups · rank-based ANOVA'},
+    ]},
   ],
   relate:[
-    {id:'correlation',label:'Correlation Matrix',note:'Pearson or Spearman r'},
-    {id:'regression',label:'Linear Regression',note:'Predict continuous outcome'},
+    {heading:'Parametric',tagColor:'#8B5CF6',tagBg:'rgba(139,92,246,0.09)',tests:[
+      {id:'correlation',label:'Pearson Correlation',note:'Linear association · assumes normality',autoConfig:{method:'pearson'}},
+      {id:'regression',label:'Linear Regression (OLS)',note:'Predict a continuous outcome'},
+    ]},
+    {heading:'Non-Parametric',tagColor:'#F59E0B',tagBg:'rgba(245,158,11,0.09)',tests:[
+      {id:'correlation',label:'Spearman Correlation',note:'Monotone association · rank-based',autoConfig:{method:'spearman'}},
+    ]},
   ],
-  summarize:[{id:'descriptive',label:'Descriptive Statistics',note:'Means, SD, CI, skewness'}],
-  model:[{id:'regression',label:'Linear Regression (OLS)',note:'Continuous outcome'}],
-  nonparam:[
-    {id:'mannwhitney',label:'Mann-Whitney U',note:'Two independent samples'},
+  summarize:[
+    {heading:'',tagColor:'#22C55E',tagBg:'',tests:[
+      {id:'descriptive',label:'Descriptive Statistics',note:'Means, SD, CI, skewness, kurtosis, quantiles'},
+    ]},
   ],
-  categorical:[{id:'chisq',label:'Chi-Square Independence',note:'Two categorical variables'}],
+  model:[
+    {heading:'In Analysis Lab',tagColor:'#3B82F6',tagBg:'rgba(59,130,246,0.07)',tests:[
+      {id:'regression',label:'Linear Regression (OLS)',note:'Continuous outcome · least-squares fit'},
+    ]},
+    {heading:'In Model Builder',tagColor:'#8B5CF6',tagBg:'rgba(139,92,246,0.07)',tests:[
+      {id:'_nav_logistic',label:'Logistic Regression',note:'Binary outcome · log-odds coefficients',redirect:'models'},
+      {id:'_nav_ridge',label:'Ridge Regression',note:'L2-regularized OLS · prevents overfitting',redirect:'models'},
+      {id:'_nav_poisson',label:'Poisson / Neg. Binomial',note:'Count outcomes · log-link GLM',redirect:'models'},
+    ]},
+  ],
+  categorical:[
+    {heading:'',tagColor:'#0891B2',tagBg:'',tests:[
+      {id:'chisq',label:'Chi-Square Independence',note:'Two categorical variables · contingency table'},
+    ]},
+  ],
 };
 
-function AnalysisWizardPanel({test,setTest,setResult,setCfg}){
+function AnalysisWizardPanel({test,setTest,setResult,setCfg,dispatch}){
   const[intent,setIntent]=useState(null);
 
-  function choose(id){setIntent(null);setTest(id);setResult(null);setCfg({});}
+  function choose(t){
+    if(t.redirect){dispatch({type:'SET_MODULE',m:t.redirect});return;}
+    setIntent(null);setTest(t.id);setResult(null);setCfg(t.autoConfig||{});
+  }
 
   return(
     <div style={{overflowY:'auto',padding:'8px 0',flex:1}}>
@@ -1173,12 +1326,13 @@ function AnalysisWizardPanel({test,setTest,setResult,setCfg}){
                 <div style={{fontSize:12,fontWeight:500,color:'rgba(255,255,255,0.85)'}}>{w.label}</div>
                 <div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:1}}>{w.desc}</div>
               </div>
+              <div style={{marginLeft:'auto',fontSize:10,color:'rgba(255,255,255,0.2)'}}>›</div>
             </div>
           ))}
           <div style={{margin:'10px 8px 0',borderTop:'1px solid rgba(255,255,255,0.07)',paddingTop:10}}>
             <div style={{padding:'4px 6px',fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.28)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:4}}>Or pick directly</div>
             {TESTS.map(t=>(
-              <div key={t.id} onClick={()=>choose(t.id)}
+              <div key={t.id} onClick={()=>choose(t)}
                 style={{padding:'7px 12px',fontSize:12,cursor:'pointer',fontWeight:test===t.id?600:400,background:test===t.id?'rgba(200,144,62,0.15)':'transparent',borderLeft:`2.5px solid ${test===t.id?'var(--gold)':'transparent'}`,color:test===t.id?'#fff':'rgba(255,255,255,0.45)',transition:'all 0.1s',borderRadius:'0 6px 6px 0'}}
                 onMouseEnter={e=>{if(test!==t.id)e.currentTarget.style.color='rgba(255,255,255,0.78)';}}
                 onMouseLeave={e=>{if(test!==t.id)e.currentTarget.style.color='rgba(255,255,255,0.45)';}}
@@ -1189,21 +1343,158 @@ function AnalysisWizardPanel({test,setTest,setResult,setCfg}){
       ):(
         <div className="slide-in">
           <button onClick={()=>setIntent(null)} className="ghost-btn" style={{margin:'8px 14px',color:'rgba(255,255,255,0.5)'}}>← Back</button>
-          <div style={{padding:'4px 14px 8px',fontSize:10,fontWeight:600,color:'rgba(255,255,255,0.28)',textTransform:'uppercase',letterSpacing:'0.07em'}}>Select Test</div>
-          {(INTENT_TESTS[intent]||[]).map(t=>(
-            <div key={t.id} onClick={()=>choose(t.id)}
-              style={{margin:'2px 8px',padding:'10px 13px',borderRadius:8,cursor:'pointer',transition:'all 0.15s',background:test===t.id?'rgba(200,144,62,0.15)':'rgba(255,255,255,0.04)',border:`1px solid ${test===t.id?'rgba(200,144,62,0.3)':'transparent'}`}}
-              onMouseEnter={e=>{if(test!==t.id)e.currentTarget.style.background='rgba(255,255,255,0.07)';}}
-              onMouseLeave={e=>{if(test!==t.id)e.currentTarget.style.background='rgba(255,255,255,0.04)';}}
-            >
-              <div style={{fontSize:12,fontWeight:600,color:test===t.id?'var(--gold)':'rgba(255,255,255,0.85)'}}>{t.label}</div>
-              <div style={{fontSize:11,color:'rgba(255,255,255,0.35)',marginTop:2}}>{t.note}</div>
+          <div style={{padding:'4px 14px 10px',fontSize:11,fontWeight:600,color:'rgba(255,255,255,0.6)',borderBottom:'1px solid rgba(255,255,255,0.07)',marginBottom:6}}>
+            {WIZARD_INTENTS.find(w=>w.id===intent)?.label}
+          </div>
+          {(INTENT_TESTS[intent]||[]).map((section,si)=>(
+            <div key={si} style={{marginBottom:4}}>
+              {section.heading&&(
+                <div style={{display:'flex',alignItems:'center',gap:7,padding:'8px 14px 5px',marginTop:si>0?6:0}}>
+                  <span style={{fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:20,background:section.tagBg||'rgba(255,255,255,0.08)',color:section.tagColor||'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:'0.08em',border:`1px solid ${section.tagColor?section.tagColor+'30':'rgba(255,255,255,0.12)'}`}}>
+                    {section.heading}
+                  </span>
+                </div>
+              )}
+              {section.tests.map(t=>(
+                <div key={t.id+t.label} onClick={()=>choose(t)}
+                  style={{margin:'1px 8px',padding:'9px 13px',borderRadius:8,cursor:'pointer',transition:'all 0.15s',background:test===t.id&&!t.redirect?'rgba(200,144,62,0.15)':'rgba(255,255,255,0.03)',border:`1px solid ${test===t.id&&!t.redirect?'rgba(200,144,62,0.28)':'transparent'}`}}
+                  onMouseEnter={e=>{if(!(test===t.id&&!t.redirect))e.currentTarget.style.background='rgba(255,255,255,0.07)';}}
+                  onMouseLeave={e=>{if(!(test===t.id&&!t.redirect))e.currentTarget.style.background='rgba(255,255,255,0.03)';}}
+                >
+                  <div style={{fontSize:12,fontWeight:600,color:test===t.id&&!t.redirect?'var(--gold)':'rgba(255,255,255,0.85)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    {t.label}
+                    {t.redirect&&<span style={{fontSize:9,color:'rgba(255,255,255,0.3)',letterSpacing:'0.05em',textTransform:'uppercase'}}>→ Builder</span>}
+                  </div>
+                  <div style={{fontSize:11,color:'rgba(255,255,255,0.35)',marginTop:2}}>{t.note}</div>
+                </div>
+              ))}
             </div>
           ))}
         </div>
       )}
     </div>
   );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESULT CHART COMPONENT
+═══════════════════════════════════════════════════════════ */
+function ResultChart({r,ds,cfg}){
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!ref.current)return;
+    try{_renderResultChart(r,ds,cfg,ref.current);}catch(e){console.warn('ResultChart:',e);}
+  },[r]);
+  return <div ref={ref} style={{height:300,width:'100%',marginTop:4}}/>;
+}
+
+function _renderResultChart(r,ds,cfg,el){
+  if(!el)return;
+  const PAL=['#4A7FA8','#C8903E','#22C55E','#EF4444','#8B5CF6','#EC4899'];
+  const L={
+    paper_bgcolor:'rgba(0,0,0,0)',plot_bgcolor:'rgba(0,0,0,0)',
+    font:{family:'Outfit,sans-serif',size:11},
+    margin:{l:52,r:16,t:28,b:44},
+    xaxis:{gridcolor:'#E8E6E1',linecolor:'#D5D2CC',zeroline:false},
+    yaxis:{gridcolor:'#E8E6E1',linecolor:'#D5D2CC',zeroline:false},
+    legend:{bgcolor:'rgba(0,0,0,0)',font:{size:11}},
+    hoverlabel:{font:{family:'Outfit,sans-serif',size:11}},
+  };
+  const OPT={responsive:true,displaylogo:false,modeBarButtonsToRemove:['sendDataToCloud','editInChartStudio','lasso2d','select2d']};
+
+  if((r._type==='ttest2'||r._type==='mw')&&ds&&cfg){
+    const dep=cfg.col,grpCol=cfg.groupCol,g1=String(cfg.g1||''),g2=String(cfg.g2||'');
+    if(!dep||!grpCol)return;
+    const getGrp=g=>ds.rows.filter(row=>String(row[grpCol])===g).map(row=>Number(row[dep])).filter(v=>!isNaN(v));
+    const v1=getGrp(g1),v2=getGrp(g2);
+    if(!v1.length||!v2.length)return;
+    Plotly.react(el,[
+      {type:'violin',y:v1,name:g1,box:{visible:true},meanline:{visible:true},line:{color:PAL[0]},fillcolor:PAL[0]+'33',opacity:0.85,points:'outliers'},
+      {type:'violin',y:v2,name:g2,box:{visible:true},meanline:{visible:true},line:{color:PAL[1]},fillcolor:PAL[1]+'33',opacity:0.85,points:'outliers'},
+    ],{...L,yaxis:{...L.yaxis,title:dep}},OPT);
+  }
+  else if(r._type==='ttest1'&&ds&&cfg){
+    const col=cfg.col;if(!col)return;
+    const v=getNum(ds,col);const mu0=Number(cfg.mu0||0);
+    Plotly.react(el,[
+      {type:'histogram',x:v,name:col,opacity:0.72,marker:{color:PAL[0]+'CC'}},
+      {type:'scatter',x:[mu0,mu0],y:[0,v.length*0.18||1],mode:'lines',name:'H₀: μ₀='+mu0,line:{color:PAL[3],width:2.5,dash:'dash'}},
+    ],{...L,barmode:'overlay',xaxis:{...L.xaxis,title:col},yaxis:{...L.yaxis,title:'Count'}},OPT);
+  }
+  else if((r._type==='ttestpaired'||r._type==='wilcoxon_sr')&&ds&&cfg){
+    const col1=cfg.col1,col2=cfg.col2;if(!col1||!col2)return;
+    const pairs=ds.rows.map(row=>{const a=Number(row[col1]),b=Number(row[col2]);return(!isNaN(a)&&!isNaN(b))?a-b:NaN;}).filter(d=>!isNaN(d));
+    Plotly.react(el,[
+      {type:'histogram',x:pairs,name:'Differences',opacity:0.75,marker:{color:PAL[0]+'CC'}},
+      {type:'scatter',x:[0,0],y:[0,pairs.length*0.2||1],mode:'lines',name:'H₀: diff=0',line:{color:PAL[3],width:2.5,dash:'dash'}},
+    ],{...L,xaxis:{...L.xaxis,title:col1+' − '+col2},yaxis:{...L.yaxis,title:'Count'}},OPT);
+  }
+  else if((r._type==='anova1'||r._type==='kruskal_wallis')&&ds&&cfg){
+    const dep=cfg.dep,grp=cfg.grp;if(!dep||!grp)return;
+    const groups={};
+    ds.rows.forEach(row=>{if(row[grp]!=null&&row[grp]!==''){const g=String(row[grp]);if(!groups[g])groups[g]=[];const v=Number(row[dep]);if(!isNaN(v))groups[g].push(v);}});
+    Plotly.react(el,
+      Object.entries(groups).map(([g,vals],i)=>({type:'box',y:vals,name:g,boxpoints:'outliers',jitter:0.25,marker:{color:PAL[i%PAL.length],size:4,opacity:0.7},line:{color:PAL[i%PAL.length],width:2},fillcolor:PAL[i%PAL.length]+'22'})),
+      {...L,yaxis:{...L.yaxis,title:dep},boxmode:'group'},OPT
+    );
+  }
+  else if(r._type==='corr'&&ds&&r.cols?.length>=2){
+    const c1=r.cols[0],c2=r.cols[1];
+    const x=getNum(ds,c1),y_=getNum(ds,c2);if(!x.length)return;
+    const rval=r.matrix[0][1].r;
+    const mx=vmean(x),my=vmean(y_),sx=vstd(x),sy=vstd(y_);
+    const slope=rval*sy/sx,intercept=my-slope*mx;
+    const xmin=Math.min(...x),xmax=Math.max(...x);
+    Plotly.react(el,[
+      {type:'scatter',mode:'markers',x,y:y_,marker:{color:PAL[0],size:6,opacity:0.6},name:'Data',hovertemplate:`${c1}: %{x}<br>${c2}: %{y}<extra></extra>`},
+      {type:'scatter',mode:'lines',x:[xmin,xmax],y:[slope*xmin+intercept,slope*xmax+intercept],line:{color:PAL[1],width:2},name:`r = ${rval.toFixed(3)}`},
+    ],{...L,xaxis:{...L.xaxis,title:c1},yaxis:{...L.yaxis,title:c2}},OPT);
+  }
+  else if(r._type==='ols'&&r.beta?.length){
+    const nm=r.names.slice(1),betas=r.beta.slice(1),lo=r.ci_lo.slice(1),hi=r.ci_hi.slice(1);
+    if(!nm.length)return;
+    Plotly.react(el,[{
+      type:'scatter',mode:'markers',x:betas,y:nm,
+      marker:{color:betas.map(b=>b>0?PAL[0]:PAL[3]),size:12,symbol:'diamond'},
+      error_x:{type:'data',symmetric:false,array:hi.map((h,i)=>h-betas[i]),arrayminus:betas.map((b,i)=>b-lo[i]),thickness:2.5,width:6},
+      name:'β (95% CI)',
+    },{
+      type:'scatter',mode:'lines',x:[0,0],y:[nm[0],nm[nm.length-1]],
+      line:{color:'#D1D5DB',width:1.5,dash:'dot'},showlegend:false,
+    }],{...L,xaxis:{...L.xaxis,title:'Coefficient (β)',zeroline:true,zerolinecolor:'#D1D5DB',zerolinewidth:1.5},yaxis:{...L.yaxis,autorange:'reversed',title:''}},OPT);
+  }
+  else if(r._type==='chisq'&&r.obs){
+    const std_res=r.v1.map((v1,i)=>r.v2.map((_,j)=>{const o=r.obs[i][j],e=r.exp[i][j];return e>0?(o-e)/Math.sqrt(e):0;}));
+    Plotly.react(el,[{
+      type:'heatmap',z:std_res,x:r.v2.map(String),y:r.v1.map(String),
+      colorscale:[['0','#2166AC'],['0.5','white'],['1','#D73027']],
+      zmid:0,zmin:-3.5,zmax:3.5,
+      text:r.v1.map((v1,i)=>r.v2.map((_,j)=>`O:${r.obs[i][j]}<br>E:${r.exp[i][j].toFixed(1)}`)),
+      texttemplate:'%{text}',
+      hovertemplate:'%{y} × %{x} — Std.Res: %{z:.2f}<extra></extra>',
+    }],{...L,title:{text:'Standardized Residuals',font:{size:11}},margin:{...L.margin,t:40}},OPT);
+  }
+  else if(r._type==='descriptive'&&ds&&r.stats){
+    const cols=r.stats.map(s=>s.col).filter(c=>ds.types[c]==='numeric').slice(0,5);
+    if(!cols.length)return;
+    Plotly.react(el,
+      cols.map((c,i)=>({type:'violin',y:getNum(ds,c),name:c,box:{visible:true},meanline:{visible:true},line:{color:PAL[i%PAL.length]},fillcolor:PAL[i%PAL.length]+'22',opacity:0.8,points:false})),
+      {...L,violinmode:'group'},OPT
+    );
+  }
+  else if((r._type==='model_logistic'||r._type==='model_poisson'||r._type==='model_ols'||r._type==='model_ridge'||r._type==='model_negbinom')&&r.beta?.length){
+    const nm=r.names.slice(1),betas=r.beta.slice(1),lo=(r.ci_lo||r.beta.map(()=>0)).slice(1),hi=(r.ci_hi||r.beta.map(()=>0)).slice(1);
+    if(!nm.length)return;
+    Plotly.react(el,[{
+      type:'scatter',mode:'markers',x:betas,y:nm,
+      marker:{color:betas.map(b=>b>0?PAL[0]:PAL[3]),size:11,symbol:'diamond'},
+      error_x:{type:'data',symmetric:false,array:hi.map((h,i)=>h-betas[i]),arrayminus:betas.map((b,i)=>b-lo[i]),thickness:2.5,width:5},
+      name:'Coefficient (95% CI)',
+    },{
+      type:'scatter',mode:'lines',x:[0,0],y:[nm[0],nm[nm.length-1]],
+      line:{color:'#D1D5DB',width:1.5,dash:'dot'},showlegend:false,
+    }],{...L,xaxis:{...L.xaxis,title:'Estimate',zeroline:true,zerolinecolor:'#D1D5DB',zerolinewidth:1.5},yaxis:{...L.yaxis,autorange:'reversed',title:''}},OPT);
+  }
 }
 
 function AnalyzeModule({state,dispatch}){
@@ -1247,6 +1538,10 @@ function AnalyzeModule({state,dispatch}){
           r={_type:'mw',...mannWhitney(getNum(ds,cfg.col1||nc[0]),getNum(ds,cfg.col2||nc[1]))};
         }else if(test==='chisq'){
           r={_type:'chisq',...chiSqIndep(ds.rows,cfg.col1||cc[0],cfg.col2||cc[1])};
+        }else if(test==='wilcoxon'){
+          r={_type:'wilcoxon_sr',...wilcoxonSR(getNum(ds,cfg.col1||nc[0]),getNum(ds,cfg.col2||nc[1]))};
+        }else if(test==='kruskal'){
+          r={_type:'kruskal_wallis',...kruskalWallis(ds.rows,cfg.dep||nc[0],cfg.grp||cc[0]||ds.columns[0])};
         }
         if(r){setResult(r);dispatch({type:'ADD_ANALYSIS',a:{id:'an_'+Date.now(),test,cfg,result:r,dsId:ds.id,t:Date.now()}});}
       }catch(e){console.error(e);alert('Analysis error: '+e.message);}
@@ -1265,7 +1560,7 @@ function AnalyzeModule({state,dispatch}){
       <div style={{flex:1,display:'flex',overflow:'hidden'}}>
         {/* Test list – wizard */}
         <div style={{width:216,borderRight:'1px solid rgba(255,255,255,0.06)',overflowY:'auto',background:'var(--navy)',flexShrink:0,display:'flex',flexDirection:'column'}}>
-          <AnalysisWizardPanel test={test} setTest={setTest} setResult={setResult} setCfg={setCfg}/>
+          <AnalysisWizardPanel test={test} setTest={setTest} setResult={setResult} setCfg={setCfg} dispatch={dispatch}/>
         </div>
         {/* Config */}
         <div className="side-panel" style={{width:256,borderRight:'1px solid var(--border)',background:'white'}}>
@@ -1285,7 +1580,7 @@ function AnalyzeModule({state,dispatch}){
         </div>
         {/* Results */}
         <div className="results-panel">
-          {result?<AnalysisResult r={result} test={test}/>:<div className="empty-state"><div style={{fontSize:48,opacity:0.15}}>∑</div><p style={{color:'var(--text-muted)',fontSize:13}}>Configure and run an analysis</p></div>}
+          {result?<AnalysisResult r={result} test={test} ds={ds} cfg={cfg}/>:<div className="empty-state"><div style={{fontSize:48,opacity:0.15}}>∑</div><p style={{color:'var(--text-muted)',fontSize:13}}>Configure and run an analysis</p></div>}
         </div>
       </div>
     </div>
@@ -1379,13 +1674,26 @@ function AnalysisCfg({test,cfg,upd,nc,cc,ds}){
       )}
     </div>);
   }
+  if(test==='wilcoxon')return(<div style={{display:'flex',flexDirection:'column',gap:11}}>
+    <div style={{fontSize:12,color:'var(--text-muted)',padding:'8px 10px',background:'rgba(245,158,11,0.07)',borderRadius:7,border:'1px solid rgba(245,158,11,0.15)',lineHeight:1.6}}>
+      Select two <strong>paired</strong> numeric columns (same length, matched rows).
+    </div>
+    {['col1','col2'].map((k,i)=><div key={k}><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Variable {i+1}</label><select className="select-field" value={cfg[k]||''} onChange={e=>upd(k,e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{nc.map(c=><option key={c} value={c}>{c}</option>)}</select></div>)}
+  </div>);
+  if(test==='kruskal')return(<div style={{display:'flex',flexDirection:'column',gap:11}}>
+    <div style={{fontSize:12,color:'var(--text-muted)',padding:'8px 10px',background:'rgba(245,158,11,0.07)',borderRadius:7,border:'1px solid rgba(245,158,11,0.15)',lineHeight:1.6}}>
+      Non-parametric alternative to one-way ANOVA. No normality assumption.
+    </div>
+    <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Outcome (numeric)</label><select className="select-field" value={cfg.dep||''} onChange={e=>upd('dep',e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{nc.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+    <div><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Grouping Variable</label><select className="select-field" value={cfg.grp||''} onChange={e=>upd('grp',e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{ac.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+  </div>);
   if(test==='chisq')return(<div style={{display:'flex',flexDirection:'column',gap:11}}>
     {['col1','col2'].map((k,i)=><div key={k}><label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>Variable {i+1}</label><select className="select-field" value={cfg[k]||''} onChange={e=>upd(k,e.target.value)} style={{width:'100%',fontSize:12}}><option value="">Select…</option>{ac.map(c=><option key={c} value={c}>{c}</option>)}</select></div>)}
   </div>);
   return null;
 }
 
-function AnalysisResult({r,test}){
+function AnalysisResultTable({r,test}){
   if(!r)return null;
   const g3=n=>Array.from({length:n},(_, i)=>'1fr').join(' ');
   function copyJSON(){navigator.clipboard?.writeText(JSON.stringify(r,null,2));}
@@ -1537,7 +1845,52 @@ function AnalysisResult({r,test}){
       <SigLegend/>
     </div>
   );
+  if(r._type==='wilcoxon_sr')return(
+    <div>
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:16}}>Wilcoxon Signed-Rank Test</h2>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
+        {[['W statistic',r.W],['z score',fmt(r.z,3)],['p-value (2-tail)',fmtP(r.p)],['W+',r.Wplus],['W−',r.Wminus],['n (non-zero diffs)',r.n]].map(([l,v])=><StatCard key={l} label={l} value={String(v)}/>)}
+      </div>
+      <SigBadge p={r.p}/><SigLegend/>
+    </div>
+  );
+  if(r._type==='kruskal_wallis')return(
+    <div>
+      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:6}}>Kruskal-Wallis H Test</h2>
+      <div style={{marginBottom:16,display:'flex',gap:8,flexWrap:'wrap'}}>
+        <span className={`pill ${sigCls(r.p)}`} style={{fontSize:12,padding:'4px 12px'}}>H({r.df}) = {fmt(r.H,3)}, p {fmtP(r.p)} {sig(r.p)}</span>
+        <span className="pill pill-blue" style={{fontSize:12,padding:'4px 12px'}}>N = {r.N} · k = {r.k}</span>
+      </div>
+      <div style={{fontWeight:600,fontSize:13,marginBottom:8}}>Group Summaries</div>
+      <table className="result-table" style={{marginBottom:16}}>
+        <thead><tr><th>Group</th><th>n</th><th>Mean</th><th>Median</th><th>SD</th><th>Mean Rank</th></tr></thead>
+        <tbody>{(r.groups||[]).map(g=><tr key={g.group}><td style={{fontWeight:600}}>{g.group}</td><td>{g.n}</td><td>{fmt(g.mean)}</td><td>{fmt(g.median)}</td><td>{fmt(g.sd)}</td><td>{fmt(g.meanRank)}</td></tr>)}</tbody>
+      </table>
+      <SigLegend/>
+    </div>
+  );
   return<div style={{fontFamily:'monospace',fontSize:12,padding:16,background:'var(--paper)',borderRadius:8}}>{JSON.stringify(r,null,2)}</div>;
+}
+
+function AnalysisResult({r,test,ds,cfg}){
+  const[view,setView]=useState('table');
+  if(!r)return null;
+  const tabUI=(
+    <div style={{display:'flex',gap:4,marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
+      {[['table','📋 Results'],['chart','📊 Chart']].map(([v,l])=>(
+        <button key={v} className={`tab-btn${view===v?' active':''}`} onClick={()=>setView(v)} style={{fontSize:12,padding:'5px 14px'}}>{l}</button>
+      ))}
+    </div>
+  );
+  return(
+    <div className="fade-in">
+      {tabUI}
+      {view==='chart'
+        ?<ResultChart r={r} ds={ds} cfg={cfg}/>
+        :<AnalysisResultTable r={r} test={test}/>
+      }
+    </div>
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -1545,8 +1898,9 @@ function AnalysisResult({r,test}){
 ═══════════════════════════════════════════════════════════ */
 function ModelsModule({state,dispatch}){
   const[mtype,setMtype]=useState('ols');
-  const[cfg,setCfg]=useState({dep:'',preds:[],grpVar:'',link:'identity'});
+  const[cfg,setCfg]=useState({dep:'',preds:[],grpVar:'',link:'identity',lambda:1.0});
   const[result,setResult]=useState(null);
+  const[modelView,setModelView]=useState('table');
   const ds=state.datasets.find(d=>d.id===state.activeId);
   const nc=ds?numCols(ds):[];const cc=ds?catCols(ds):[];
   const upd=(k,v)=>setCfg(c=>({...c,[k]:v}));
@@ -1576,6 +1930,20 @@ function ModelsModule({state,dispatch}){
         const yc=yv.filter(v=>!isNaN(v));
         const r=poissonReg(yc,Xm);
         setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_poisson'});
+      }else if(mtype==='ridge'){
+        const yv=getNum(ds,cfg.dep);
+        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const yc=yv.filter(v=>!isNaN(v));
+        const r=ridgeRegression(yc,Xm,Number(cfg.lambda)||1.0);
+        if(r)setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_ridge'});
+        else alert('Matrix is singular. Check predictors.');
+      }else if(mtype==='negbinom'){
+        const yv=getNum(ds,cfg.dep);
+        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const yc=yv.filter(v=>!isNaN(v));
+        const r=negativeBinomialReg(yc,Xm);
+        if(r)setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_negbinom'});
+        else alert('Negative Binomial fit failed. Check that outcome contains non-negative integers.');
       }
     }catch(e){alert('Model error: '+e.message+'. Check your data for issues.');}
   }
@@ -1584,8 +1952,10 @@ function ModelsModule({state,dispatch}){
 
   const MODEL_TYPES=[
     {id:'ols',l:'Linear Regression',sub:'Continuous outcome · OLS',avail:true},
+    {id:'ridge',l:'Ridge Regression',sub:'L2-regularized · shrinks coefficients',avail:true},
     {id:'logistic',l:'Logistic Regression',sub:'Binary outcome · log-odds',avail:true},
     {id:'poisson',l:'Poisson GLM',sub:'Count outcome · log-link',avail:true},
+    {id:'negbinom',l:'Negative Binomial',sub:'Overdispersed counts · log-link',avail:true},
     {id:'lmm',l:'Linear Mixed Model',sub:'Random intercepts/slopes',avail:false},
     {id:'glmm',l:'Generalized LMM',sub:'Mixed effects + link fn',avail:false},
   ];
@@ -1651,66 +2021,122 @@ function ModelsModule({state,dispatch}){
               {(mtype==='lmm'||mtype==='glmm')&&cfg.grpVar?` + (1 | ${cfg.grpVar})`:''}
             </div>
           )}
+          {mtype==='ridge'&&(
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,fontWeight:500,display:'block',marginBottom:4}}>λ Regularization Strength</label>
+              <input className="input-field" type="number" min="0" step="0.1" value={cfg.lambda??1.0} onChange={e=>upd('lambda',parseFloat(e.target.value)||1.0)} style={{width:'100%',fontSize:12}}/>
+              <div style={{fontSize:11,color:'var(--text-muted)',marginTop:4}}>Higher λ shrinks coefficients more aggressively. Try 0.1–10.</div>
+            </div>
+          )}
           <button className="btn btn-gold" onClick={fitModel} style={{width:'100%'}}>Fit Model</button>
         </div>
         {/* Results */}
         <div className="results-panel">
           {result?(
             <div className="fade-in">
-              {result._type==='model_ols'&&(
-                <>
-                  <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Linear Regression (OLS)</h2>
-                  <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')}</div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-                    {[['R²',fmt(result.r2,4)],['Adj. R²',fmt(result.r2adj,4)],['F stat',fmt(result.f,3)],['RMSE',fmt(result.rmse,4)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
-                  </div>
-                  <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β</th><th>SE</th><th>t</th><th>p</th><th>95% CI</th></tr></thead>
-                  <tbody>{result.names.map((name,i)=>(
-                    <tr key={name} className="coef-row">
-                      <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se_b[i])}</td><td>{fmt(result.t_v[i],3)}</td>
-                      <td><SigBadge p={result.p_v[i]}/></td><td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(result.ci_lo[i],3)}, {fmt(result.ci_hi[i],3)}]</td>
-                    </tr>
-                  ))}</tbody></table>
-                  <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>The model explains <strong>{(result.r2*100).toFixed(1)}%</strong> of variance (R² = {fmt(result.r2,3)}, Adj. R² = {fmt(result.r2adj,3)}). F({result.df_m},{result.df_e}) = {fmt(result.f,2)}, p {fmtP(result.p_f)}.</p></div>
-                </>
-              )}
-              {result._type==='model_logistic'&&(
-                <>
-                  <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Logistic Regression</h2>
-                  <div className="model-formula">{result.dep} (ref: {result.levels[0]} → 1 = {result.levels[1]}) ~ {result.preds.join(' + ')}</div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-                    {[["McFadden R²",fmt(result.mcfR2,4)],['Accuracy',(result.accuracy*100).toFixed(1)+'%'],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
-                  </div>
-                  <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-odds)</th><th>SE</th><th>z</th><th>p</th><th>OR (95% CI)</th></tr></thead>
-                  <tbody>{result.names.map((name,i)=>(
-                    <tr key={name} className="coef-row">
-                      <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
-                      <td><SigBadge p={result.p_v[i]}/></td>
-                      <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.or[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
-                    </tr>
-                  ))}</tbody></table>
-                  <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Odds ratios &gt; 1 indicate increased odds of <strong>{result.levels[1]}</strong>. McFadden R² = {fmt(result.mcfR2,3)} ({result.mcfR2>0.2?'good':'modest'} fit). Accuracy = {(result.accuracy*100).toFixed(1)}%.</p></div>
-                </>
-              )}
-              {result._type==='model_poisson'&&(
-                <>
-                  <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Poisson GLM (log-link)</h2>
-                  <div className="model-formula">log({result.dep}) ~ {result.preds.join(' + ')}</div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-                    {[['Deviance',fmt(result.deviance,2)],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)],['n',result.n]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
-                  </div>
-                  <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-rate)</th><th>SE</th><th>z</th><th>p</th><th>IRR (95% CI)</th></tr></thead>
-                  <tbody>{result.names.map((name,i)=>(
-                    <tr key={name} className="coef-row">
-                      <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
-                      <td><SigBadge p={result.p_v[i]}/></td>
-                      <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.irr[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
-                    </tr>
-                  ))}</tbody></table>
-                  <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Incidence Rate Ratios (IRR) multiplicatively scale the expected count. Deviance = {fmt(result.deviance,2)}, AIC = {fmt(result.aic,1)}.</p></div>
-                </>
-              )}
-              <SigLegend/>
+              <div style={{display:'flex',gap:4,marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
+                {[['table','📋 Results'],['chart','📊 Chart']].map(([v,l])=>(
+                  <button key={v} className={`tab-btn${modelView===v?' active':''}`} onClick={()=>setModelView(v)} style={{fontSize:12,padding:'5px 14px'}}>{l}</button>
+                ))}
+              </div>
+              {modelView==='chart'
+                ?<ResultChart r={result} ds={ds} cfg={cfg}/>
+                :(
+                  {result._type==='model_ols'&&(
+                    <>
+                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Linear Regression (OLS)</h2>
+                      <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')}</div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                        {[['R²',fmt(result.r2,4)],['Adj. R²',fmt(result.r2adj,4)],['F stat',fmt(result.f,3)],['RMSE',fmt(result.rmse,4)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                      </div>
+                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β</th><th>SE</th><th>t</th><th>p</th><th>95% CI</th></tr></thead>
+                      <tbody>{result.names.map((name,i)=>(
+                        <tr key={name} className="coef-row">
+                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se_b[i])}</td><td>{fmt(result.t_v[i],3)}</td>
+                          <td><SigBadge p={result.p_v[i]}/></td><td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(result.ci_lo[i],3)}, {fmt(result.ci_hi[i],3)}]</td>
+                        </tr>
+                      ))}</tbody></table>
+                      <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>The model explains <strong>{(result.r2*100).toFixed(1)}%</strong> of variance (R² = {fmt(result.r2,3)}, Adj. R² = {fmt(result.r2adj,3)}). F({result.df_m},{result.df_e}) = {fmt(result.f,2)}, p {fmtP(result.p_f)}.</p></div>
+                    </>
+                  )}
+                  {result._type==='model_logistic'&&(
+                    <>
+                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Logistic Regression</h2>
+                      <div className="model-formula">{result.dep} (ref: {result.levels[0]} → 1 = {result.levels[1]}) ~ {result.preds.join(' + ')}</div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                        {[["McFadden R²",fmt(result.mcfR2,4)],['Accuracy',(result.accuracy*100).toFixed(1)+'%'],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                      </div>
+                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-odds)</th><th>SE</th><th>z</th><th>p</th><th>OR (95% CI)</th></tr></thead>
+                      <tbody>{result.names.map((name,i)=>(
+                        <tr key={name} className="coef-row">
+                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
+                          <td><SigBadge p={result.p_v[i]}/></td>
+                          <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.or[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
+                        </tr>
+                      ))}</tbody></table>
+                      <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Odds ratios &gt; 1 indicate increased odds of <strong>{result.levels[1]}</strong>. McFadden R² = {fmt(result.mcfR2,3)} ({result.mcfR2>0.2?'good':'modest'} fit). Accuracy = {(result.accuracy*100).toFixed(1)}%.</p></div>
+                    </>
+                  )}
+                  {result._type==='model_poisson'&&(
+                    <>
+                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Poisson GLM (log-link)</h2>
+                      <div className="model-formula">log({result.dep}) ~ {result.preds.join(' + ')}</div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                        {[['Deviance',fmt(result.deviance,2)],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)],['n',result.n]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                      </div>
+                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-rate)</th><th>SE</th><th>z</th><th>p</th><th>IRR (95% CI)</th></tr></thead>
+                      <tbody>{result.names.map((name,i)=>(
+                        <tr key={name} className="coef-row">
+                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
+                          <td><SigBadge p={result.p_v[i]}/></td>
+                          <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.irr[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
+                        </tr>
+                      ))}</tbody></table>
+                      <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Incidence Rate Ratios (IRR) multiplicatively scale the expected count. Deviance = {fmt(result.deviance,2)}, AIC = {fmt(result.aic,1)}.</p></div>
+                    </>
+                  )}
+                  {result._type==='model_ridge'&&(
+                    <>
+                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Ridge Regression (L2)</h2>
+                      <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')} &nbsp;·&nbsp; λ = {result.lambda}</div>
+                      <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14,padding:'8px 12px',background:'rgba(245,158,11,0.07)',borderRadius:7,border:'1px solid rgba(245,158,11,0.15)'}}>
+                        Ridge shrinks coefficients toward zero, reducing overfitting. R² is on training data; p-values are approximate.
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                        {[['R²',fmt(result.r2,4)],['λ',result.lambda],['RMSE',fmt(result.rmse,4)],['n',result.n]].map(([l,v])=><StatCard key={l} label={l} value={String(v)}/>)}
+                      </div>
+                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (shrunk)</th><th>SE</th><th>t</th><th>p (approx)</th><th>95% CI</th></tr></thead>
+                      <tbody>{result.names.map((name,i)=>(
+                        <tr key={name} className="coef-row">
+                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se_b[i])}</td><td>{fmt(result.t_v[i],3)}</td>
+                          <td><SigBadge p={result.p_v[i]}/></td><td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(result.ci_lo[i],3)}, {fmt(result.ci_hi[i],3)}]</td>
+                        </tr>
+                      ))}</tbody></table>
+                      <SigLegend/>
+                    </>
+                  )}
+                  {result._type==='model_negbinom'&&(
+                    <>
+                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Negative Binomial GLM (log-link)</h2>
+                      <div className="model-formula">log({result.dep}) ~ {result.preds.join(' + ')}</div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                        {[['θ (dispersion)',fmt(result.theta,3)],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)],['n',result.n]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                      </div>
+                      <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14,padding:'8px 12px',background:'rgba(74,127,168,0.07)',borderRadius:7}}>
+                        θ → ∞ recovers Poisson; smaller θ = more overdispersion. IRR = exp(β).
+                      </div>
+                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-rate)</th><th>SE</th><th>z</th><th>p</th><th>IRR (95% CI)</th></tr></thead>
+                      <tbody>{result.names.map((name,i)=>(
+                        <tr key={name} className="coef-row">
+                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
+                          <td><SigBadge p={result.p_v[i]}/></td>
+                          <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.irr[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
+                        </tr>
+                      ))}</tbody></table>
+                      <SigLegend/>
+                    </>
+                  )}
+                  <SigLegend/>
             </div>
           ):(
             <div className="empty-state">
