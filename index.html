@@ -69,7 +69,7 @@ function ibeta(x,a,b){if(x<=0)return 0;if(x>=1)return 1;const lb=lgamma(a)+lgamm
 function tCDF(t,df){const x=df/(df+t*t),p=0.5*ibeta(x,df/2,0.5);return t>=0?1-p:p;}
 function fCDF(x,d1,d2){if(x<=0)return 0;return ibeta(d1*x/(d1*x+d2),d1/2,d2/2);}
 function igamma(a,x){if(x<=0)return 0;let s=0,t=1/a;s=t;for(let n=1;n<200;n++){t*=x/(a+n);s+=t;if(Math.abs(t)<1e-10*Math.abs(s))break;}return s*Math.exp(-x+a*Math.log(x)-lgamma(a));}
-function chi2CDF(x,df){if(x<=0)return 0;return igamma(df/2,x/2)/Math.exp(lgamma(df/2));}
+function chi2CDF(x,df){if(x<=0)return 0;return igamma(df/2,x/2);}
 function normalCDF(x){const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;const sg=x<0?-1:1;x=Math.abs(x)/Math.sqrt(2);const t=1/(1+p*x);const poly=t*(a1+t*(a2+t*(a3+t*(a4+t*a5))));return 0.5*(1+sg*(1-poly*Math.exp(-x*x)));}
 function tCrit(df,alpha){let lo=0,hi=20;for(let i=0;i<100;i++){const mid=(lo+hi)/2;if(1-tCDF(mid,df)>alpha)lo=mid;else hi=mid;}return(lo+hi)/2;}
 
@@ -1038,7 +1038,7 @@ function DragVarPanel({ds,slotDefs,values,onChange}){
             </div>
             <div
               className={`drop-slot${isOver&&!isIncompatible?' over':''}${val?' filled':''}`}
-              style={{borderColor,background,transition:'border-color 0.12s,background 0.12s',cursor:isIncompatible&&isOver?'not-allowed':'default'}}
+              style={{borderColor, background: bg, transition:'border-color 0.12s,background 0.12s',cursor:isIncompatible&&isOver?'not-allowed':'default'}}
               onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=isIncompatible?'none':'move';}}
               onDragEnter={()=>enterZone(def.key)}
               onDragLeave={()=>leaveZone(def.key)}
