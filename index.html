@@ -1440,7 +1440,8 @@ function _renderResultChart(r,ds,cfg,el){
   }
   else if(r._type==='corr'&&ds&&r.cols?.length>=2){
     const c1=r.cols[0],c2=r.cols[1];
-    const x=getNum(ds,c1),y_=getNum(ds,c2);if(!x.length)return;
+    if(!ds.columns.includes(c1)||!ds.columns.includes(c2))return;
+    const x=getNum(ds,c1),y_=getNum(ds,c2);if(!x.length||!y_.length)return;
     const rval=r.matrix[0][1].r;
     const mx=vmean(x),my=vmean(y_),sx=vstd(x),sy=vstd(y_);
     const slope=rval*sy/sx,intercept=my-slope*mx;
@@ -1508,7 +1509,9 @@ function AnalyzeModule({state,dispatch}){
   const groups=[...new Set(TESTS.map(t=>t.g))];
 
   function run(){
-    if(!ds)return;setLoading(true);
+    if(!ds)return;
+    if(test.startsWith('_nav_'))return;
+    setLoading(true);
     setTimeout(()=>{
       try{
         let r=null;
@@ -2042,101 +2045,103 @@ function ModelsModule({state,dispatch}){
               {modelView==='chart'
                 ?<ResultChart r={result} ds={ds} cfg={cfg}/>
                 :(
-                  {result._type==='model_ols'&&(
-                    <>
-                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Linear Regression (OLS)</h2>
-                      <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')}</div>
-                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-                        {[['R²',fmt(result.r2,4)],['Adj. R²',fmt(result.r2adj,4)],['F stat',fmt(result.f,3)],['RMSE',fmt(result.rmse,4)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
-                      </div>
-                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β</th><th>SE</th><th>t</th><th>p</th><th>95% CI</th></tr></thead>
-                      <tbody>{result.names.map((name,i)=>(
-                        <tr key={name} className="coef-row">
-                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se_b[i])}</td><td>{fmt(result.t_v[i],3)}</td>
-                          <td><SigBadge p={result.p_v[i]}/></td><td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(result.ci_lo[i],3)}, {fmt(result.ci_hi[i],3)}]</td>
-                        </tr>
-                      ))}</tbody></table>
-                      <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>The model explains <strong>{(result.r2*100).toFixed(1)}%</strong> of variance (R² = {fmt(result.r2,3)}, Adj. R² = {fmt(result.r2adj,3)}). F({result.df_m},{result.df_e}) = {fmt(result.f,2)}, p {fmtP(result.p_f)}.</p></div>
-                    </>
-                  )}
-                  {result._type==='model_logistic'&&(
-                    <>
-                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Logistic Regression</h2>
-                      <div className="model-formula">{result.dep} (ref: {result.levels[0]} → 1 = {result.levels[1]}) ~ {result.preds.join(' + ')}</div>
-                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-                        {[["McFadden R²",fmt(result.mcfR2,4)],['Accuracy',(result.accuracy*100).toFixed(1)+'%'],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
-                      </div>
-                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-odds)</th><th>SE</th><th>z</th><th>p</th><th>OR (95% CI)</th></tr></thead>
-                      <tbody>{result.names.map((name,i)=>(
-                        <tr key={name} className="coef-row">
-                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
-                          <td><SigBadge p={result.p_v[i]}/></td>
-                          <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.or[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
-                        </tr>
-                      ))}</tbody></table>
-                      <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Odds ratios &gt; 1 indicate increased odds of <strong>{result.levels[1]}</strong>. McFadden R² = {fmt(result.mcfR2,3)} ({result.mcfR2>0.2?'good':'modest'} fit). Accuracy = {(result.accuracy*100).toFixed(1)}%.</p></div>
-                    </>
-                  )}
-                  {result._type==='model_poisson'&&(
-                    <>
-                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Poisson GLM (log-link)</h2>
-                      <div className="model-formula">log({result.dep}) ~ {result.preds.join(' + ')}</div>
-                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-                        {[['Deviance',fmt(result.deviance,2)],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)],['n',result.n]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
-                      </div>
-                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-rate)</th><th>SE</th><th>z</th><th>p</th><th>IRR (95% CI)</th></tr></thead>
-                      <tbody>{result.names.map((name,i)=>(
-                        <tr key={name} className="coef-row">
-                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
-                          <td><SigBadge p={result.p_v[i]}/></td>
-                          <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.irr[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
-                        </tr>
-                      ))}</tbody></table>
-                      <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Incidence Rate Ratios (IRR) multiplicatively scale the expected count. Deviance = {fmt(result.deviance,2)}, AIC = {fmt(result.aic,1)}.</p></div>
-                    </>
-                  )}
-                  {result._type==='model_ridge'&&(
-                    <>
-                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Ridge Regression (L2)</h2>
-                      <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')} &nbsp;·&nbsp; λ = {result.lambda}</div>
-                      <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14,padding:'8px 12px',background:'rgba(245,158,11,0.07)',borderRadius:7,border:'1px solid rgba(245,158,11,0.15)'}}>
-                        Ridge shrinks coefficients toward zero, reducing overfitting. R² is on training data; p-values are approximate.
-                      </div>
-                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-                        {[['R²',fmt(result.r2,4)],['λ',result.lambda],['RMSE',fmt(result.rmse,4)],['n',result.n]].map(([l,v])=><StatCard key={l} label={l} value={String(v)}/>)}
-                      </div>
-                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (shrunk)</th><th>SE</th><th>t</th><th>p (approx)</th><th>95% CI</th></tr></thead>
-                      <tbody>{result.names.map((name,i)=>(
-                        <tr key={name} className="coef-row">
-                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se_b[i])}</td><td>{fmt(result.t_v[i],3)}</td>
-                          <td><SigBadge p={result.p_v[i]}/></td><td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(result.ci_lo[i],3)}, {fmt(result.ci_hi[i],3)}]</td>
-                        </tr>
-                      ))}</tbody></table>
-                      <SigLegend/>
-                    </>
-                  )}
-                  {result._type==='model_negbinom'&&(
-                    <>
-                      <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Negative Binomial GLM (log-link)</h2>
-                      <div className="model-formula">log({result.dep}) ~ {result.preds.join(' + ')}</div>
-                      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
-                        {[['θ (dispersion)',fmt(result.theta,3)],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)],['n',result.n]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
-                      </div>
-                      <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14,padding:'8px 12px',background:'rgba(74,127,168,0.07)',borderRadius:7}}>
-                        θ → ∞ recovers Poisson; smaller θ = more overdispersion. IRR = exp(β).
-                      </div>
-                      <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-rate)</th><th>SE</th><th>z</th><th>p</th><th>IRR (95% CI)</th></tr></thead>
-                      <tbody>{result.names.map((name,i)=>(
-                        <tr key={name} className="coef-row">
-                          <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
-                          <td><SigBadge p={result.p_v[i]}/></td>
-                          <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.irr[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
-                        </tr>
-                      ))}</tbody></table>
-                      <SigLegend/>
-                    </>
-                  )}
-                  <SigLegend/>
+                  <>
+                    {result._type==='model_ols'&&(
+                      <>
+                        <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Linear Regression (OLS)</h2>
+                        <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')}</div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                          {[['R²',fmt(result.r2,4)],['Adj. R²',fmt(result.r2adj,4)],['F stat',fmt(result.f,3)],['RMSE',fmt(result.rmse,4)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                        </div>
+                        <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β</th><th>SE</th><th>t</th><th>p</th><th>95% CI</th></tr></thead>
+                        <tbody>{result.names.map((name,i)=>(
+                          <tr key={name} className="coef-row">
+                            <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se_b[i])}</td><td>{fmt(result.t_v[i],3)}</td>
+                            <td><SigBadge p={result.p_v[i]}/></td><td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(result.ci_lo[i],3)}, {fmt(result.ci_hi[i],3)}]</td>
+                          </tr>
+                        ))}</tbody></table>
+                        <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>The model explains <strong>{(result.r2*100).toFixed(1)}%</strong> of variance (R² = {fmt(result.r2,3)}, Adj. R² = {fmt(result.r2adj,3)}). F({result.df_m},{result.df_e}) = {fmt(result.f,2)}, p {fmtP(result.p_f)}.</p></div>
+                      </>
+                    )}
+                    {result._type==='model_ridge'&&(
+                      <>
+                        <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Ridge Regression (L2)</h2>
+                        <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')} &nbsp;·&nbsp; λ = {result.lambda}</div>
+                        <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14,padding:'8px 12px',background:'rgba(245,158,11,0.07)',borderRadius:7,border:'1px solid rgba(245,158,11,0.15)'}}>
+                          Ridge shrinks coefficients toward zero, reducing overfitting. R² is on training data; p-values are approximate (OLS SEs with ridge β).
+                        </div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                          {[['R²',fmt(result.r2,4)],['λ',String(result.lambda)],['RMSE',fmt(result.rmse,4)],['n',String(result.n)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                        </div>
+                        <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (shrunk)</th><th>SE</th><th>t</th><th>p (approx)</th><th>95% CI</th></tr></thead>
+                        <tbody>{result.names.map((name,i)=>(
+                          <tr key={name} className="coef-row">
+                            <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se_b[i])}</td><td>{fmt(result.t_v[i],3)}</td>
+                            <td><SigBadge p={result.p_v[i]}/></td><td style={{fontFamily:'monospace',fontSize:11}}>[{fmt(result.ci_lo[i],3)}, {fmt(result.ci_hi[i],3)}]</td>
+                          </tr>
+                        ))}</tbody></table>
+                      </>
+                    )}
+                    {result._type==='model_logistic'&&(
+                      <>
+                        <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Logistic Regression</h2>
+                        <div className="model-formula">{result.dep} (ref: {result.levels?.[0]} → 1 = {result.levels?.[1]}) ~ {result.preds.join(' + ')}</div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                          {[["McFadden R²",fmt(result.mcfR2,4)],['Accuracy',(result.accuracy*100).toFixed(1)+'%'],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                        </div>
+                        <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-odds)</th><th>SE</th><th>z</th><th>p</th><th>OR (95% CI)</th></tr></thead>
+                        <tbody>{result.names.map((name,i)=>(
+                          <tr key={name} className="coef-row">
+                            <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
+                            <td><SigBadge p={result.p_v[i]}/></td>
+                            <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.or[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
+                          </tr>
+                        ))}</tbody></table>
+                        <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Odds ratios &gt; 1 indicate increased odds of <strong>{result.levels?.[1]}</strong>. McFadden R² = {fmt(result.mcfR2,3)} ({result.mcfR2>0.2?'good':'modest'} fit). Accuracy = {(result.accuracy*100).toFixed(1)}%.</p></div>
+                      </>
+                    )}
+                    {result._type==='model_poisson'&&(
+                      <>
+                        <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Poisson GLM (log-link)</h2>
+                        <div className="model-formula">log({result.dep}) ~ {result.preds.join(' + ')}</div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                          {[['Deviance',fmt(result.deviance,2)],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)],['n',String(result.n)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                        </div>
+                        <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-rate)</th><th>SE</th><th>z</th><th>p</th><th>IRR (95% CI)</th></tr></thead>
+                        <tbody>{result.names.map((name,i)=>(
+                          <tr key={name} className="coef-row">
+                            <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
+                            <td><SigBadge p={result.p_v[i]}/></td>
+                            <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.irr[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
+                          </tr>
+                        ))}</tbody></table>
+                        <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Incidence Rate Ratios (IRR) multiplicatively scale the expected count. Deviance = {fmt(result.deviance,2)}, AIC = {fmt(result.aic,1)}.</p></div>
+                      </>
+                    )}
+                    {result._type==='model_negbinom'&&(
+                      <>
+                        <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Negative Binomial GLM (log-link)</h2>
+                        <div className="model-formula">log({result.dep}) ~ {result.preds.join(' + ')}</div>
+                        <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14,padding:'8px 12px',background:'rgba(74,127,168,0.07)',borderRadius:7}}>
+                          θ → ∞ recovers Poisson. Smaller θ = more overdispersion. IRR = exp(β).
+                        </div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                          {[['θ (dispersion)',fmt(result.theta,3)],['AIC',fmt(result.aic,1)],['Log-Lik',fmt(result.ll,2)],['n',String(result.n)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                        </div>
+                        <table className="result-table" style={{marginBottom:12}}><thead><tr><th>Term</th><th>β (log-rate)</th><th>SE</th><th>z</th><th>p</th><th>IRR (95% CI)</th></tr></thead>
+                        <tbody>{result.names.map((name,i)=>(
+                          <tr key={name} className="coef-row">
+                            <td style={{fontWeight:600}}>{name}</td><td>{fmt(result.beta[i])}</td><td>{fmt(result.se[i])}</td><td>{fmt(result.z_v[i],3)}</td>
+                            <td><SigBadge p={result.p_v[i]}/></td>
+                            <td style={{fontFamily:'monospace',fontSize:11}}>{fmt(result.irr[i],3)} [{fmt(Math.exp(result.ci_lo[i]),3)}, {fmt(Math.exp(result.ci_hi[i]),3)}]</td>
+                          </tr>
+                        ))}</tbody></table>
+                      </>
+                    )}
+                    <SigLegend/>
+                  </>
+                )
+              }
             </div>
           ):(
             <div className="empty-state">
