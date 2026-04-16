@@ -356,6 +356,80 @@ function negativeBinomialReg(y_vals,X_mat,maxIter=150,tol=1e-7){
   return{beta,se,z_v,p_v,fitted:mu,theta,ll,aic,n,k,ci_lo:beta.map((b,i)=>b-1.96*se[i]),ci_hi:beta.map((b,i)=>b+1.96*se[i]),irr:beta.map(b=>Math.exp(b))};
 }
 
+/* ── D'Agostino-Pearson K² Normality Test ── */
+function normalityTest(x){
+  const v=clean(x);const n=v.length;
+  if(n<8)return{label:"D'Agostino-Pearson K²",K2:NaN,p:NaN,n,note:'n<8, not applicable'};
+  const sk=vskew(v);const kt=vkurt(v);
+  // Skewness component
+  const Y=sk*Math.sqrt((n+1)*(n+3)/(6*(n-2)));
+  const beta2=(3*(n*n+27*n-70)*(n+1)*(n+3))/((n-2)*(n+5)*(n+7)*(n+9));
+  const W2=Math.sqrt(2*(Math.max(beta2,1.0001)-1))-1;
+  const W2s=Math.max(W2,0.0001);
+  const delta=1/Math.sqrt(0.5*Math.log(W2s));
+  const alpha2=Math.sqrt(2/(W2s-1+1e-12));
+  const Ya=Y/Math.max(alpha2,1e-12);
+  const Z1=delta*Math.log(Ya+Math.sqrt(Ya*Ya+1));
+  // Kurtosis component
+  const E_kt=3*(n-1)/(n+1);
+  const Var_kt=24*n*(n-2)*(n-3)/((n+1)**2*(n+3)*(n+5));
+  const ktN=(kt-E_kt)/Math.sqrt(Math.max(Var_kt,1e-15));
+  const ktNs=Math.abs(ktN)>1e-6?ktN:1e-6;
+  const Xk=6+8/ktNs*(2/ktNs+Math.sqrt(1+4/ktNs**2));
+  const Z2=Xk>0.01?((1-2/(9*Xk))-Math.cbrt(1-2/Xk))/Math.sqrt(2/(9*Xk)):0;
+  const Z1s=isFinite(Z1)?Z1:0;const Z2s=isFinite(Z2)?Z2:0;
+  const K2=Z1s**2+Z2s**2;
+  const p=isNaN(K2)?NaN:Math.max(0,Math.min(1,1-chi2CDF(K2,2)));
+  return{label:"D'Agostino-Pearson K²",K2,p,n,sk,kt};
+}
+
+/* ── Levene's Test (Brown-Forsythe, median-based) ── */
+function leveneTest(groupsObj){
+  const gnames=Object.keys(groupsObj);const k=gnames.length;
+  if(k<2)return{label:"Levene's Test",F:NaN,p:NaN,df1:0,df2:0};
+  const tr={};gnames.forEach(g=>{const med=vmedian(groupsObj[g]);tr[g]=groupsObj[g].map(v=>Math.abs(v-med));});
+  const N=gnames.reduce((s,g)=>s+groupsObj[g].length,0);
+  const allZ=Object.values(tr).flat();const gm=vmean(allZ);
+  const ssb=gnames.reduce((s,g)=>s+tr[g].length*(vmean(tr[g])-gm)**2,0);
+  const ssw=gnames.reduce((s,g)=>{const zm=vmean(tr[g]);return s+tr[g].reduce((ss,z)=>ss+(z-zm)**2,0);},0);
+  const dfb=k-1,dfw=N-k;
+  const F=(ssb/Math.max(dfb,1))/(ssw/Math.max(dfw,1));
+  const p=isNaN(F)?NaN:Math.max(0,Math.min(1,1-fCDF(F,dfb,dfw)));
+  return{label:"Levene's Test (Brown-Forsythe)",F,p,df1:dfb,df2:dfw};
+}
+
+/* ── Lasso Regression (Coordinate Descent, L1) ── */
+function lassoReg(y_vals,X_mat,lambda=1.0,maxIter=2000,tol=1e-7){
+  const n=y_vals.length;
+  const X=X_mat.map(row=>[1,...row]);const k=X[0].length;
+  const means=Array.from({length:k},(_,j)=>j===0?0:vmean(X.map(r=>r[j])));
+  const sds=Array.from({length:k},(_,j)=>{if(j===0)return 1;const s=vstd(X.map(r=>r[j]),false);return s<1e-12?1:s;});
+  const Xs=X.map(row=>row.map((v,j)=>j===0?v:(v-means[j])/sds[j]));
+  const xx=Array.from({length:k},(_,j)=>Xs.reduce((s,row)=>s+row[j]*row[j],0));
+  let beta=new Array(k).fill(0);
+  for(let iter=0;iter<maxIter;iter++){
+    let maxD=0;
+    for(let j=0;j<k;j++){
+      const rj=y_vals.map((y,i)=>y-Xs[i].reduce((s,v,l)=>l===j?s:s+v*beta[l],0));
+      const rho=Xs.reduce((s,row,i)=>s+row[j]*rj[i],0);
+      const prev=beta[j];const lam2=lambda*n/2;
+      beta[j]=j===0?rho/xx[j]:rho>lam2?(rho-lam2)/xx[j]:rho<-lam2?(rho+lam2)/xx[j]:0;
+      maxD=Math.max(maxD,Math.abs(beta[j]-prev));
+    }
+    if(maxD<tol)break;
+  }
+  const betaOut=beta.map((b,j)=>j===0?b:b/sds[j]);
+  betaOut[0]=beta[0]-beta.slice(1).reduce((s,b,j)=>s+b*means[j+1]/sds[j+1],0);
+  const fitted=X.map(row=>row.reduce((s,v,j)=>s+v*betaOut[j],0));
+  const resid=y_vals.map((y,i)=>y-fitted[i]);
+  const sse=resid.reduce((s,r)=>s+r**2,0);
+  const ymean=vmean(y_vals);const sst=y_vals.reduce((s,y)=>s+(y-ymean)**2,0);
+  const r2=Math.max(0,1-sse/sst);
+  const nonzero=betaOut.slice(1).filter(b=>Math.abs(b)>1e-8).length;
+  const df_e=Math.max(n-nonzero-1,1);
+  return{beta:betaOut,fitted,residuals:resid,r2,lambda,n,nonzero,df_e,rmse:Math.sqrt(sse/df_e)};
+}
+
 /* ═══════════════════════════════════════════════════════════
    DATA UTILITIES
 ═══════════════════════════════════════════════════════════ */
@@ -383,6 +457,60 @@ function sig(p){if(p<0.001)return'***';if(p<0.01)return'**';if(p<0.05)return'*';
 function sigCls(p){if(p<0.001)return'p1';if(p<0.05)return'p5';if(p<0.1)return'p10';return'pns';}
 function dlCSV(rows,name){const csv=Papa.unparse(rows);const b=new Blob([csv],{type:'text/csv'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
 function dlJSON(data,name){const b=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=name;a.click();URL.revokeObjectURL(u);}
+function narrativeResult(r,cfg={}){
+  if(!r||!r._type)return'';
+  const alpha=0.05;
+  const sig=p=>p<alpha?'statistically significant':'not statistically significant';
+  const dSize=d=>Math.abs(d)>=0.8?'large':Math.abs(d)>=0.5?'medium':'small';
+  const etaSize=e=>e>=0.14?'large':e>=0.06?'medium':'small';
+  const r2Size=r2=>r2>=0.49?'large':r2>=0.09?'moderate':'small';
+  const corrStr=r=>`${Math.abs(r)>=0.7?'strong':Math.abs(r)>=0.3?'moderate':'weak'} ${r>=0?'positive':'negative'}`;
+  const cramersStr=v=>v>=0.5?'large':v>=0.3?'medium':v>=0.1?'small':'negligible';
+
+  switch(r._type){
+    case'ttest1':{
+      const col=cfg.col||'the variable';
+      return `A one-sample t-test examined whether the mean of ${col} differed from a hypothesised value of μ₀ = ${fmt(r.mu0,2)}. The sample mean was M = ${fmt(r.mean,3)} (SD = ${fmt(r.sd,3)}, n = ${r.n}). The difference was ${sig(r.p)}, t(${fmt(r.df,0)}) = ${fmt(r.t,3)}, p ${fmtP(r.p)}, 95% CI [${fmt(r.ci_lo,3)}, ${fmt(r.ci_hi,3)}]. The ${dSize(r.d)} effect size was Cohen's d = ${fmt(r.d,3)}.`;
+    }
+    case'ttest2':{
+      const col=cfg.col||'the outcome';const g1=cfg.g1||'Group 1';const g2=cfg.g2||'Group 2';
+      return `${r.label} compared ${col} between ${g1} (M = ${fmt(r.mean1,3)}, SD = ${fmt(r.sd1,3)}, n = ${r.n1}) and ${g2} (M = ${fmt(r.mean2,3)}, SD = ${fmt(r.sd2,3)}, n = ${r.n2}). The difference of ${fmt(r.diff,3)} was ${sig(r.p)}, t(${fmt(r.df,1)}) = ${fmt(r.t,3)}, p ${fmtP(r.p)}, 95% CI [${fmt(r.ci_lo,3)}, ${fmt(r.ci_hi,3)}]. The ${dSize(r.d)} effect size was Cohen's d = ${fmt(r.d,3)}.`;
+    }
+    case'ttestpaired':{
+      const col1=cfg.col1||'Variable 1';const col2=cfg.col2||'Variable 2';
+      return `A paired-samples t-test compared ${col1} and ${col2} across ${r.n} paired observations. The mean difference was M = ${fmt(r.mean,3)} (SD = ${fmt(r.sd,3)}, SE = ${fmt(r.se,3)}). The difference was ${sig(r.p)}, t(${fmt(r.df,0)}) = ${fmt(r.t,3)}, p ${fmtP(r.p)}, 95% CI [${fmt(r.ci_lo,3)}, ${fmt(r.ci_hi,3)}]. The ${dSize(r.d)} effect size was Cohen's d = ${fmt(r.d,3)}.`;
+    }
+    case'anova1':{
+      const dep=cfg.dep||'the outcome';const grp=cfg.grp||'group';
+      return `A one-way ANOVA examined whether ${dep} differed across levels of ${grp} (k = ${r.k} groups, N = ${r.N}). There was ${r.p<alpha?'a statistically significant':'no statistically significant'} group effect, F(${r.dfb}, ${r.dfw}) = ${fmt(r.F,3)}, p ${fmtP(r.p)}. The ${etaSize(r.eta2)} effect size η² = ${fmt(r.eta2,3)} indicates that ${(r.eta2*100).toFixed(1)}% of variance in ${dep} was attributable to ${grp}.${r.p<alpha?' Post-hoc Tukey HSD comparisons were conducted to identify pairwise differences.':''}`;
+    }
+    case'corr':{
+      const method=r.method==='spearman'?'Spearman rank':'Pearson';
+      if(r.cols?.length===2){
+        const cell=r.matrix[0][1];
+        return `A ${method} correlation assessed the relationship between ${r.cols[0]} and ${r.cols[1]} (n = ${cell.n}). There was a ${corrStr(cell.r)} correlation, r${r.method==='spearman'?'ₛ':''}= ${fmt(cell.r,3)}, p ${fmtP(cell.p)}, ${sig(cell.p)}. The shared variance was r² = ${fmt(cell.r**2,3)} (${(cell.r**2*100).toFixed(1)}%).`;
+      }
+      return `A ${method} correlation matrix was computed for ${r.cols.length} variables. Significant correlations (p < .05) are flagged in the table above.`;
+    }
+    case'ols':{
+      const sigPreds=(r.preds||[]).filter((_,i)=>r.p_v[i+1]<alpha);
+      return `Multiple linear regression predicted ${r.dep} from ${r.preds?.join(', ')} (N = ${r.n}). The model accounted for a ${r2Size(r.r2)} proportion of variance, R² = ${fmt(r.r2,3)}, adjusted R² = ${fmt(r.r2adj,3)}, F(${r.df_m}, ${r.df_e}) = ${fmt(r.f,3)}, p ${fmtP(r.p_f)}, RMSE = ${fmt(r.rmse,3)}.${sigPreds.length?` Significant predictors (p < .05): ${sigPreds.join(', ')}.`:' No individual predictor reached significance independently.'}`;
+    }
+    case'mw':{
+      return `A Mann-Whitney U test served as a nonparametric alternative to the independent-samples t-test (n₁ = ${r.nx}, n₂ = ${r.ny}). The result was ${sig(r.p)}, U = ${r.U}, z = ${fmt(r.z,3)}, p ${fmtP(r.p)} (two-tailed).`;
+    }
+    case'chisq':{
+      return `A chi-square test of independence examined the association between ${cfg.col1||'Variable 1'} (${r.v1?.length} levels) and ${cfg.col2||'Variable 2'} (${r.v2?.length} levels), N = ${r.n}. The association was ${sig(r.p)}, χ²(${r.df}) = ${fmt(r.chi2,3)}, p ${fmtP(r.p)}. The ${cramersStr(r.cramersV)} effect size Cramér's V = ${fmt(r.cramersV,3)}.`;
+    }
+    case'wilcoxon_sr':{
+      return `A Wilcoxon signed-rank test served as a nonparametric alternative to the paired t-test (n = ${r.n} non-zero differences). The result was ${sig(r.p)}, W = ${r.W} (W⁺ = ${r.Wplus}, W⁻ = ${r.Wminus}), z = ${fmt(r.z,3)}, p ${fmtP(r.p)} (two-tailed).`;
+    }
+    case'kruskal_wallis':{
+      return `A Kruskal-Wallis H test served as a nonparametric alternative to one-way ANOVA (k = ${r.k} groups, N = ${r.N}). The result was ${sig(r.p)}, H(${r.df}) = ${fmt(r.H,3)}, p ${fmtP(r.p)}.`;
+    }
+    default: return'';
+  }
+}
 function filterRows(rows,conds){
   return rows.filter(r=>conds.every(c=>{
     const v=r[c.col],n=Number(v);
@@ -948,88 +1076,76 @@ function CleanModule({state,dispatch}){
 // values: {key: colName | null}
 // onChange: fn(newValues)
 function DragVarPanel({ds,slotDefs,values,onChange}){
-  const[dragging,setDragging]=useState(null); // {col, fromSlot}
+  const[dragging,setDragging]=useState(null);
   const[overSlot,setOverSlot]=useState(null);
-  const enterCounters=useRef({});
 
-  // Global dragend clears state if drop lands outside any valid zone
   useEffect(()=>{
-    const clear=()=>{setDragging(null);setOverSlot(null);};
-    document.addEventListener('dragend',clear);
-    return()=>document.removeEventListener('dragend',clear);
+    const onEnd=()=>{setDragging(null);setOverSlot(null);};
+    window.addEventListener('dragend',onEnd);
+    return()=>window.removeEventListener('dragend',onEnd);
   },[]);
 
   const assigned=Object.values(values).filter(Boolean);
   const available=ds?ds.columns.filter(c=>!assigned.includes(c)):[];
 
-  function onDragStart(e,col,fromSlot='pool'){
-    setDragging({col,fromSlot});
+  const startDrag=(e,col,fromSlot)=>{
     e.dataTransfer.effectAllowed='move';
     e.dataTransfer.setData('text/plain',col);
-  }
+    setDragging({col,fromSlot:fromSlot||'pool'});
+  };
 
-  function enterZone(key){
-    enterCounters.current[key]=(enterCounters.current[key]||0)+1;
-    setOverSlot(key);
-  }
-  function leaveZone(key){
-    enterCounters.current[key]=Math.max(0,(enterCounters.current[key]||1)-1);
-    if(enterCounters.current[key]===0) setOverSlot(s=>s===key?null:s);
-  }
-  function resetZone(key){enterCounters.current[key]=0;}
-
-  function onDropSlot(e,slotKey){
-    e.preventDefault();resetZone(slotKey);setOverSlot(null);
-    if(!dragging)return;
+  const isIncompat=(slotKey)=>{
     const def=slotDefs.find(s=>s.key===slotKey);
-    if(def?.types&&!def.types.includes(ds.types[dragging.col])){setDragging(null);return;}
-    const next={...values};
-    if(dragging.fromSlot&&dragging.fromSlot!=='pool') next[dragging.fromSlot]=null;
-    next[slotKey]=dragging.col;
-    onChange(next);setDragging(null);
-  }
+    return!!(dragging&&def?.types&&!def.types.includes(ds?.types[dragging.col]));
+  };
 
-  function onDropPool(e){
-    e.preventDefault();resetZone('pool');setOverSlot(null);
-    if(dragging?.fromSlot&&dragging.fromSlot!=='pool'){onChange({...values,[dragging.fromSlot]:null});}
+  const dropOnSlot=(e,slotKey)=>{
+    e.preventDefault();e.stopPropagation();
+    setOverSlot(null);
+    if(!dragging)return;
+    if(isIncompat(slotKey)){setDragging(null);return;}
+    const next={...values};
+    if(dragging.fromSlot!=='pool')next[dragging.fromSlot]=null;
+    next[slotKey]=dragging.col;
+    onChange(next);
     setDragging(null);
-  }
+  };
+
+  const dropOnPool=(e)=>{
+    e.preventDefault();e.stopPropagation();
+    setOverSlot(null);
+    if(dragging?.fromSlot&&dragging.fromSlot!=='pool')onChange({...values,[dragging.fromSlot]:null});
+    setDragging(null);
+  };
 
   return(
     <div style={{display:'flex',flexDirection:'column',gap:10}}>
-      {/* Variable pool */}
       <div>
         <div style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>Variables — drag to slots below</div>
-        <div className={`var-pool${overSlot==='pool'?' over':''}`}
-          onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move';}}
-          onDragEnter={()=>enterZone('pool')}
-          onDragLeave={()=>leaveZone('pool')}
-          onDrop={onDropPool}
+        <div
+          className={`var-pool${overSlot==='pool'?' over':''}`}
+          onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect='move';setOverSlot('pool');}}
+          onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOverSlot(s=>s==='pool'?null:s);}}
+          onDrop={dropOnPool}
         >
-          {available.map(col=>{
-            const isDraggingThis=dragging?.col===col;
-            return(
-              <div key={col}
-                className={`var-chip ${ds&&ds.types[col]==='numeric'?'num':'cat'}${isDraggingThis?' dragging':''}`}
-                draggable onDragStart={e=>onDragStart(e,col,'pool')} onDragEnd={()=>{setDragging(null);setOverSlot(null);}}
-                title={`${col} · ${ds.types[col]}`}
-              >
-                <span className="var-badge">{ds.types[col]==='numeric'?'#':'T'}</span>{col}
-              </div>
-            );
-          })}
+          {available.map(col=>(
+            <div key={col}
+              className={`var-chip ${ds&&ds.types[col]==='numeric'?'num':'cat'}${dragging?.col===col&&dragging?.fromSlot==='pool'?' dragging':''}`}
+              draggable
+              onDragStart={e=>startDrag(e,col,'pool')}
+              title={`${col} · ${ds?.types[col]}`}
+            >
+              <span className="var-badge">{ds?.types[col]==='numeric'?'#':'T'}</span>{col}
+            </div>
+          ))}
           {!available.length&&<span style={{fontSize:11,color:'var(--text-light)',fontStyle:'italic',padding:'2px 4px'}}>All variables assigned</span>}
         </div>
       </div>
 
-      {/* Drop slots */}
       {slotDefs.map(def=>{
         const val=values[def.key];
         const isOver=overSlot===def.key;
-        const isIncompatible=dragging&&def.types&&!def.types.includes(ds?.types[dragging.col]);
-        const borderColor=isOver?(isIncompatible?'var(--danger)':'var(--blue)'):val?'var(--border)':'#D5D2CC';
-        const bg=isOver?(isIncompatible?'rgba(239,68,68,0.04)':'rgba(74,127,168,0.06)'):val?'white':'rgba(247,246,242,0.6)';
-
+        const incompat=isIncompat(def.key);
         return(
           <div key={def.key}>
             <div style={{fontSize:10,fontWeight:600,color:'var(--text-muted)',textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:5,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -1037,23 +1153,29 @@ function DragVarPanel({ds,slotDefs,values,onChange}){
               {def.types&&<span style={{fontWeight:400,color:'var(--text-light)',fontSize:9,background:'var(--paper-dark)',padding:'1px 5px',borderRadius:4}}>{def.types.join(' · ')}</span>}
             </div>
             <div
-              className={`drop-slot${isOver&&!isIncompatible?' over':''}${val?' filled':''}`}
-              style={{borderColor, background: bg, transition:'border-color 0.12s,background 0.12s',cursor:isIncompatible&&isOver?'not-allowed':'default'}}
-              onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=isIncompatible?'none':'move';}}
-              onDragEnter={()=>enterZone(def.key)}
-              onDragLeave={()=>leaveZone(def.key)}
-              onDrop={e=>onDropSlot(e,def.key)}
+              className={`drop-slot${isOver&&!incompat?' over':''}${val?' filled':''}`}
+              style={{
+                borderColor:isOver?(incompat?'var(--danger)':'var(--blue)'):val?'var(--border)':'#D5D2CC',
+                background:isOver?(incompat?'rgba(239,68,68,0.05)':'rgba(74,127,168,0.07)'):'white',
+                cursor:incompat&&isOver?'not-allowed':'default',
+                transition:'border-color 0.12s,background 0.12s',
+              }}
+              onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=incompat?'none':'move';setOverSlot(def.key);}}
+              onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOverSlot(s=>s===def.key?null:s);}}
+              onDrop={e=>dropOnSlot(e,def.key)}
             >
               {val?(
-                <div className={`var-chip ${ds.types[val]==='numeric'?'num':'cat'}`}
-                  draggable onDragStart={e=>onDragStart(e,val,def.key)} onDragEnd={()=>{setDragging(null);setOverSlot(null);}}
+                <div
+                  className={`var-chip ${ds?.types[val]==='numeric'?'num':'cat'}`}
+                  draggable
+                  onDragStart={e=>startDrag(e,val,def.key)}
                 >
-                  <span className="var-badge">{ds.types[val]==='numeric'?'#':'T'}</span>
+                  <span className="var-badge">{ds?.types[val]==='numeric'?'#':'T'}</span>
                   {val}
-                  <span onClick={()=>onChange({...values,[def.key]:null})} style={{marginLeft:5,cursor:'pointer',opacity:0.45,fontSize:14,lineHeight:1}}>×</span>
+                  <span onClick={e=>{e.stopPropagation();onChange({...values,[def.key]:null});}} style={{marginLeft:5,cursor:'pointer',opacity:0.45,fontSize:14,lineHeight:1}}>×</span>
                 </div>
               ):(
-                <span className="slot-hint">{isIncompatible?`⛔ Needs ${def.types?.join('/')}`:def.hint||`Drop ${def.label}`}</span>
+                <span className="slot-hint">{incompat?`⛔ Needs ${def.types?.join('/')}`:def.hint||`Drop ${def.label}`}</span>
               )}
             </div>
           </div>
@@ -1071,14 +1193,12 @@ function VisualizeModule({state,dispatch}){
   const[rendered,setRendered]=useState(false);
   // Clear slots that violate the new chart type's constraints
   useEffect(()=>{
+    if(!ds)return;
     const numOnly=['histogram','box','violin'];
-    if(numOnly.includes(cfg.type)&&cfg.x&&ds&&ds.types[cfg.x]!=='numeric'){
-      setCfg(c=>({...c,x:''}));
-    }
-    if(cfg.y&&ds&&ds.types[cfg.y]!=='numeric'){
-      setCfg(c=>({...c,y:''}));
-    }
-  },[cfg.type]); // eslint-disable-line
+    if(numOnly.includes(cfg.type)&&cfg.x&&ds.types[cfg.x]!=='numeric')setCfg(c=>({...c,x:''}));
+    if(cfg.y&&ds.types[cfg.y]!=='numeric')setCfg(c=>({...c,y:''}));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[cfg.type,ds?.id]);
   const chartRef=useRef(null);
   const ds=state.datasets.find(d=>d.id===state.activeId);
   const nc=ds?numCols(ds):[];const cc=ds?catCols(ds):[];const ac=ds?ds.columns:[];
@@ -1259,45 +1379,66 @@ const WIZARD_INTENTS=[
    redirect: 'm' navigates to that module instead of running in Analyze Lab. */
 const INTENT_TESTS={
   compare:[
-    {heading:'Parametric',tagColor:'#3B82F6',tagBg:'rgba(59,130,246,0.09)',tests:[
-      {id:'ttest2',label:"Welch's t-Test",note:'Two independent groups'},
+    {heading:'Parametric',tagColor:'#3B82F6',tagBg:'rgba(59,130,246,0.09)',
+     assumes:'Assumes normality & equal variance',
+     tests:[
+      {id:'ttest2',label:"Welch's t-Test",note:'2 independent groups · robust to unequal variances'},
       {id:'ttest1',label:'One-Sample t-Test',note:'Mean vs. known reference value'},
-      {id:'ttestpaired',label:'Paired t-Test',note:'Matched pairs / within-subject design'},
-      {id:'anova1',label:'One-Way ANOVA',note:'3+ groups · post-hoc Tukey HSD'},
+      {id:'ttestpaired',label:'Paired t-Test',note:'Matched pairs / repeated measures'},
+      {id:'anova1',label:'One-Way ANOVA',note:'3+ independent groups · Tukey HSD post-hoc'},
     ]},
-    {heading:'Non-Parametric',tagColor:'#F59E0B',tagBg:'rgba(245,158,11,0.09)',tests:[
-      {id:'mannwhitney',label:'Mann-Whitney U',note:'Two independent groups · rank-based'},
-      {id:'wilcoxon',label:'Wilcoxon Signed-Rank',note:'Paired data · rank-based'},
-      {id:'kruskal',label:'Kruskal-Wallis H',note:'3+ groups · rank-based ANOVA'},
+    {heading:'Non-Parametric',tagColor:'#F59E0B',tagBg:'rgba(245,158,11,0.09)',
+     assumes:'No distributional assumption · rank-based',
+     tests:[
+      {id:'mannwhitney',label:'Mann-Whitney U',note:'2 groups · rank-based alternative to t-test'},
+      {id:'wilcoxon',label:'Wilcoxon Signed-Rank',note:'Paired · rank-based alternative to paired t-test'},
+      {id:'kruskal',label:'Kruskal-Wallis H',note:'3+ groups · rank-based alternative to ANOVA'},
     ]},
   ],
   relate:[
-    {heading:'Parametric',tagColor:'#8B5CF6',tagBg:'rgba(139,92,246,0.09)',tests:[
-      {id:'correlation',label:'Pearson Correlation',note:'Linear association · assumes normality',autoConfig:{method:'pearson'}},
-      {id:'regression',label:'Linear Regression (OLS)',note:'Predict a continuous outcome'},
+    {heading:'Parametric',tagColor:'#8B5CF6',tagBg:'rgba(139,92,246,0.09)',
+     assumes:'Assumes bivariate normality & linearity',
+     tests:[
+      {id:'correlation',label:'Pearson r',note:'Linear association · assumes normality',autoConfig:{method:'pearson'}},
+      {id:'regression',label:'Linear Regression (OLS)',note:'Predict continuous outcome · fitted line'},
     ]},
-    {heading:'Non-Parametric',tagColor:'#F59E0B',tagBg:'rgba(245,158,11,0.09)',tests:[
-      {id:'correlation',label:'Spearman Correlation',note:'Monotone association · rank-based',autoConfig:{method:'spearman'}},
+    {heading:'Non-Parametric',tagColor:'#F59E0B',tagBg:'rgba(245,158,11,0.09)',
+     assumes:'Monotone association · no normality required',
+     tests:[
+      {id:'correlation',label:'Spearman rₛ',note:'Monotone association · rank-based · robust to outliers',autoConfig:{method:'spearman'}},
+    ]},
+    {heading:'Regularised',tagColor:'#0891B2',tagBg:'rgba(8,145,178,0.09)',
+     assumes:'When multicollinearity or variable selection is needed',
+     tests:[
+      {id:'_nav_ridge',label:'Ridge Regression',note:'L2 penalty · shrinks all coefficients',redirect:'models'},
+      {id:'_nav_lasso',label:'Lasso Regression',note:'L1 penalty · zeroes irrelevant predictors',redirect:'models'},
     ]},
   ],
   summarize:[
-    {heading:'',tagColor:'#22C55E',tagBg:'',tests:[
-      {id:'descriptive',label:'Descriptive Statistics',note:'Means, SD, CI, skewness, kurtosis, quantiles'},
+    {heading:'Descriptive',tagColor:'#22C55E',tagBg:'rgba(34,197,94,0.07)',
+     assumes:'No assumptions required',
+     tests:[
+      {id:'descriptive',label:'Descriptive Statistics',note:'Mean, SD, CI, skewness, kurtosis, quantiles for all numeric variables'},
     ]},
   ],
   model:[
-    {heading:'In Analysis Lab',tagColor:'#3B82F6',tagBg:'rgba(59,130,246,0.07)',tests:[
-      {id:'regression',label:'Linear Regression (OLS)',note:'Continuous outcome · least-squares fit'},
+    {heading:'Continuous Outcome',tagColor:'#3B82F6',tagBg:'rgba(59,130,246,0.07)',assumes:'',
+     tests:[
+      {id:'regression',label:'Linear Regression (OLS)',note:'Continuous outcome · unregularised'},
+      {id:'_nav_ridge',label:'Ridge Regression',note:'L2 — reduces overfitting',redirect:'models'},
+      {id:'_nav_lasso',label:'Lasso Regression',note:'L1 — variable selection',redirect:'models'},
     ]},
-    {heading:'In Model Builder',tagColor:'#8B5CF6',tagBg:'rgba(139,92,246,0.07)',tests:[
+    {heading:'Binary / Count Outcome',tagColor:'#8B5CF6',tagBg:'rgba(139,92,246,0.07)',assumes:'',
+     tests:[
       {id:'_nav_logistic',label:'Logistic Regression',note:'Binary outcome · log-odds coefficients',redirect:'models'},
-      {id:'_nav_ridge',label:'Ridge Regression',note:'L2-regularized OLS · prevents overfitting',redirect:'models'},
-      {id:'_nav_poisson',label:'Poisson / Neg. Binomial',note:'Count outcomes · log-link GLM',redirect:'models'},
+      {id:'_nav_poisson',label:'Poisson GLM',note:'Count outcome · log-link',redirect:'models'},
+      {id:'_nav_negbinom',label:'Negative Binomial',note:'Overdispersed counts',redirect:'models'},
     ]},
   ],
   categorical:[
-    {heading:'',tagColor:'#0891B2',tagBg:'',tests:[
-      {id:'chisq',label:'Chi-Square Independence',note:'Two categorical variables · contingency table'},
+    {heading:'Categorical Association',tagColor:'#0891B2',tagBg:'rgba(8,145,178,0.07)',assumes:'',
+     tests:[
+      {id:'chisq',label:'Chi-Square Independence',note:'Two categorical variables · contingency table · Cramér\'s V'},
     ]},
   ],
 };
@@ -1349,10 +1490,13 @@ function AnalysisWizardPanel({test,setTest,setResult,setCfg,dispatch}){
           {(INTENT_TESTS[intent]||[]).map((section,si)=>(
             <div key={si} style={{marginBottom:4}}>
               {section.heading&&(
-                <div style={{display:'flex',alignItems:'center',gap:7,padding:'8px 14px 5px',marginTop:si>0?6:0}}>
-                  <span style={{fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:20,background:section.tagBg||'rgba(255,255,255,0.08)',color:section.tagColor||'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:'0.08em',border:`1px solid ${section.tagColor?section.tagColor+'30':'rgba(255,255,255,0.12)'}`}}>
-                    {section.heading}
-                  </span>
+                <div style={{padding:'8px 14px 4px',marginTop:si>0?8:0}}>
+                  <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:section.assumes?3:0}}>
+                    <span style={{fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:20,background:section.tagBg||'rgba(255,255,255,0.08)',color:section.tagColor||'rgba(255,255,255,0.5)',textTransform:'uppercase',letterSpacing:'0.08em',border:`1px solid ${section.tagColor?section.tagColor+'30':'rgba(255,255,255,0.12)'}`}}>
+                      {section.heading}
+                    </span>
+                  </div>
+                  {section.assumes&&<div style={{fontSize:10,color:'rgba(255,255,255,0.22)',fontStyle:'italic',paddingLeft:2}}>{section.assumes}</div>}
                 </div>
               )}
               {section.tests.map(t=>(
@@ -1496,6 +1640,122 @@ function _renderResultChart(r,ds,cfg,el){
       line:{color:'#D1D5DB',width:1.5,dash:'dot'},showlegend:false,
     }],{...L,xaxis:{...L.xaxis,title:'Estimate',zeroline:true,zerolinecolor:'#D1D5DB',zerolinewidth:1.5},yaxis:{...L.yaxis,autorange:'reversed',title:''}},OPT);
   }
+}
+
+function AssumptionPanel({r,ds,cfg}){
+  const checks=useMemo(()=>{
+    if(!r||!ds)return[];
+    const results=[];
+
+    const addNorm=(label,vals)=>{
+      if(!vals||!vals.length)return;
+      if(vals.length<8){results.push({icon:'⚠',color:'#F59E0B',label:`Normality — ${label}`,detail:`n = ${vals.length} < 8; D'Agostino-Pearson not applicable. Interpret results cautiously.`});return;}
+      const nt=normalityTest(vals);
+      const ok=isNaN(nt.p)||nt.p>0.05;
+      results.push({icon:ok?'✓':'✗',color:ok?'#22C55E':'#EF4444',label:`Normality — ${label}`,detail:`D'Agostino-Pearson K²(2) = ${fmt(nt.K2,3)}, p ${fmtP(nt.p)}. ${ok?'No significant deviation from normality detected.':'Significant non-normality detected — consider a nonparametric alternative.'} Skewness = ${fmt(nt.sk,2)}, Excess kurtosis = ${fmt(nt.kt,2)}.`});
+    };
+
+    const addLevene=(groupsObj)=>{
+      const lt=leveneTest(groupsObj);
+      const ok=isNaN(lt.p)||lt.p>0.05;
+      results.push({icon:ok?'✓':'✗',color:ok?'#22C55E':'#EF4444',label:'Homogeneity of Variance',detail:`Levene (Brown-Forsythe): F(${lt.df1},${lt.df2}) = ${fmt(lt.F,3)}, p ${fmtP(lt.p)}. ${ok?'Equal variances assumed.':'Unequal variances — Welch\'s t-test or Kruskal-Wallis recommended over Student\'s t / standard ANOVA.'}`});
+    };
+
+    const addN=(n,rec=20)=>{
+      const ok=n>=rec;
+      results.push({icon:ok?'✓':'⚠',color:ok?'#22C55E':'#F59E0B',label:'Sample Size',detail:`n = ${n}${ok?'':` < ${rec} — results may be unstable; interpret with caution and consider exact or bootstrap methods.`}`});
+    };
+
+    const addInfo=(label,detail)=>results.push({icon:'ℹ',color:'#3B82F6',label,detail});
+
+    switch(r._type){
+      case'ttest1':{
+        const vals=cfg.col&&ds.columns.includes(cfg.col)?getNum(ds,cfg.col):[];
+        addNorm(cfg.col||'variable',vals);
+        addN(r.n);
+        addInfo('Independence','Observations are assumed to be independent. Violation inflates Type I error rate.');
+        break;
+      }
+      case'ttest2':{
+        const dep=cfg.col;const grpCol=cfg.groupCol;
+        if(dep&&grpCol){
+          const g1v=ds.rows.filter(row=>String(row[grpCol])===String(cfg.g1)).map(row=>Number(row[dep])).filter(v=>!isNaN(v));
+          const g2v=ds.rows.filter(row=>String(row[grpCol])===String(cfg.g2)).map(row=>Number(row[dep])).filter(v=>!isNaN(v));
+          addNorm(cfg.g1||'Group 1',g1v);
+          addNorm(cfg.g2||'Group 2',g2v);
+          if(g1v.length&&g2v.length)addLevene({[cfg.g1||'G1']:g1v,[cfg.g2||'G2']:g2v});
+          addN(Math.min(g1v.length,g2v.length),15);
+          addInfo("Welch's vs Student's",'This result used Welch\'s t (unequal variances). If Levene\'s test shows equal variances, Student\'s t is also valid but gives nearly identical results.');
+        }
+        break;
+      }
+      case'ttestpaired':{
+        if(cfg.col1&&cfg.col2&&ds.columns.includes(cfg.col1)&&ds.columns.includes(cfg.col2)){
+          const diffs=ds.rows.map(row=>Number(row[cfg.col1])-Number(row[cfg.col2])).filter(d=>!isNaN(d));
+          addNorm('Paired differences',diffs);
+          addN(diffs.length);
+          addInfo('Matched Pairs','Each observation in Variable 1 must correspond to the same subject/unit in Variable 2.');
+        }
+        break;
+      }
+      case'anova1':{
+        if(cfg.dep&&cfg.grp){
+          const groups={};
+          ds.rows.forEach(row=>{const g=String(row[cfg.grp]);const v=Number(row[cfg.dep]);if(row[cfg.grp]!=null&&row[cfg.grp]!==''&&!isNaN(v)){if(!groups[g])groups[g]=[];groups[g].push(v);}});
+          Object.entries(groups).slice(0,4).forEach(([g,vals])=>addNorm(g,vals));
+          addLevene(groups);
+          addN(r.N,30);
+          addInfo('Independence','Observations must be independent across groups. Violations require repeated-measures ANOVA or mixed models.');
+        }
+        break;
+      }
+      case'corr':{
+        r.cols?.slice(0,2).forEach(col=>{if(ds.columns.includes(col))addNorm(col,getNum(ds,col));});
+        addInfo('Linearity',`Pearson r assumes a linear relationship. Inspect the scatter plot. If the relationship is monotone but non-linear, use Spearman rₛ instead.`);
+        addInfo('Outliers','Pearson r is sensitive to outliers. Large influential points can distort r substantially. Check the scatter plot.');
+        break;
+      }
+      case'ols':{
+        if(r.residuals){addNorm('Residuals',r.residuals);}
+        addInfo('Homoscedasticity','Variance of residuals should be constant across fitted values. Plot residuals vs. fitted to check for fan-shaped patterns.');
+        addInfo('Multicollinearity','High correlation among predictors inflates standard errors. If predictors correlate > 0.80, consider Ridge or Lasso regression.');
+        addN(r.n,(r.preds?.length||1)*15);
+        break;
+      }
+      case'mw':{
+        addInfo('Scale of Measurement','Mann-Whitney U tests difference in rank distributions. Assumes ordinal or continuous outcome.');
+        addN(Math.min(r.nx,r.ny),10);
+        break;
+      }
+      case'chisq':{
+        if(r.exp){const lowExp=r.exp.flat().filter(e=>e<5).length;if(lowExp>0)results.push({icon:'⚠',color:'#F59E0B',label:'Expected Cell Frequencies',detail:`${lowExp} cell(s) have expected frequency < 5. Chi-square approximation may be poor — consider Fisher's exact test or collapsing sparse categories.`});}
+        addInfo('Independence','Observations must be independent; each case counted once.');
+        addN(r.n,40);
+        break;
+      }
+      default: addInfo('No specific assumption checks available for this test.','');
+    }
+    return results;
+  },[r,ds,cfg]);
+
+  if(!checks.length)return<div style={{padding:16,fontSize:13,color:'var(--text-muted)'}}>No assumption checks configured for this test.</div>;
+  return(
+    <div className="fade-in">
+      <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:20,fontWeight:600,marginBottom:16}}>Assumption Checks</h3>
+      {checks.map((c,i)=>(
+        <div key={i} style={{display:'flex',gap:12,padding:'12px 16px',marginBottom:9,background:'white',border:`1px solid ${c.color}30`,borderLeft:`3px solid ${c.color}`,borderRadius:8}}>
+          <div style={{fontSize:15,color:c.color,flexShrink:0,width:20,textAlign:'center',marginTop:1}}>{c.icon}</div>
+          <div>
+            <div style={{fontWeight:600,fontSize:12,marginBottom:3,color:c.color==='#22C55E'?'#15803D':c.color==='#EF4444'?'#B91C1C':c.color==='#F59E0B'?'#B45309':'#1D4ED8'}}>{c.label}</div>
+            <div style={{fontSize:12,color:'var(--text-muted)',lineHeight:1.65}}>{c.detail}</div>
+          </div>
+        </div>
+      ))}
+      <div style={{marginTop:14,padding:'10px 14px',background:'rgba(74,127,168,0.06)',borderRadius:8,fontSize:11,color:'var(--text-muted)',lineHeight:1.7}}>
+        <strong>Guidance:</strong> Formal assumption tests are themselves sample-size sensitive. Combine them with visual inspection (Q-Q plots, scatter plots) and subject-matter knowledge. With n&nbsp;>&nbsp;200, even trivial deviations may be significant.
+      </div>
+    </div>
+  );
 }
 
 function AnalyzeModule({state,dispatch}){
@@ -1878,20 +2138,33 @@ function AnalysisResultTable({r,test}){
 function AnalysisResult({r,test,ds,cfg}){
   const[view,setView]=useState('table');
   if(!r)return null;
-  const tabUI=(
-    <div style={{display:'flex',gap:4,marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)'}}>
-      {[['table','📋 Results'],['chart','📊 Chart']].map(([v,l])=>(
-        <button key={v} className={`tab-btn${view===v?' active':''}`} onClick={()=>setView(v)} style={{fontSize:12,padding:'5px 14px'}}>{l}</button>
-      ))}
-    </div>
-  );
+  const narrative=narrativeResult(r,cfg);
   return(
     <div className="fade-in">
-      {tabUI}
-      {view==='chart'
-        ?<ResultChart r={r} ds={ds} cfg={cfg}/>
-        :<AnalysisResultTable r={r} test={test}/>
-      }
+      <div style={{display:'flex',gap:3,marginBottom:14,paddingBottom:12,borderBottom:'1px solid var(--border)',flexWrap:'wrap'}}>
+        {[['table','📋 Results'],['chart','📊 Chart'],['narrative','✍ Narrative'],['assumptions','🔍 Assumptions']].map(([v,l])=>(
+          <button key={v} className={`tab-btn${view===v?' active':''}`} onClick={()=>setView(v)} style={{fontSize:12,padding:'5px 12px'}}>{l}</button>
+        ))}
+      </div>
+      {view==='table'&&<AnalysisResultTable r={r} test={test}/>}
+      {view==='chart'&&<ResultChart r={r} ds={ds} cfg={cfg}/>}
+      {view==='narrative'&&(
+        <div className="fade-in">
+          <h3 style={{fontFamily:"'Crimson Pro',serif",fontSize:20,fontWeight:600,marginBottom:4}}>Result Narrative</h3>
+          <p style={{fontSize:12,color:'var(--text-muted)',marginBottom:14}}>APA-style write-up — copy directly into a results section.</p>
+          {narrative?(
+            <>
+              <div style={{padding:'20px 24px',background:'white',border:'1px solid var(--border)',borderRadius:10,fontSize:14,lineHeight:2,fontFamily:"Georgia,'Crimson Pro',serif",color:'var(--text)',marginBottom:12,boxShadow:'0 1px 8px rgba(0,0,0,0.04)'}}>
+                {narrative}
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={()=>navigator.clipboard?.writeText(narrative)}>Copy to Clipboard</button>
+            </>
+          ):(
+            <div style={{color:'var(--text-muted)',fontSize:13}}>Narrative not yet available for this analysis type.</div>
+          )}
+        </div>
+      )}
+      {view==='assumptions'&&<AssumptionPanel r={r} ds={ds} cfg={cfg}/>}
     </div>
   );
 }
@@ -1933,6 +2206,13 @@ function ModelsModule({state,dispatch}){
         const yc=yv.filter(v=>!isNaN(v));
         const r=poissonReg(yc,Xm);
         setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_poisson'});
+      }else if(mtype==='lasso'){
+        const yv=getNum(ds,cfg.dep);
+        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const yc=yv.filter(v=>!isNaN(v));
+        const r=lassoReg(yc,Xm,Number(cfg.lambda)||1.0);
+        if(r)setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_lasso'});
+        else alert('Lasso fit failed.');
       }else if(mtype==='ridge'){
         const yv=getNum(ds,cfg.dep);
         const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
@@ -1956,6 +2236,7 @@ function ModelsModule({state,dispatch}){
   const MODEL_TYPES=[
     {id:'ols',l:'Linear Regression',sub:'Continuous outcome · OLS',avail:true},
     {id:'ridge',l:'Ridge Regression',sub:'L2-regularized · shrinks coefficients',avail:true},
+    {id:'lasso',l:'Lasso Regression',sub:'L1-regularized · automatic variable selection',avail:true},
     {id:'logistic',l:'Logistic Regression',sub:'Binary outcome · log-odds',avail:true},
     {id:'poisson',l:'Poisson GLM',sub:'Count outcome · log-link',avail:true},
     {id:'negbinom',l:'Negative Binomial',sub:'Overdispersed counts · log-link',avail:true},
@@ -2061,6 +2342,34 @@ function ModelsModule({state,dispatch}){
                           </tr>
                         ))}</tbody></table>
                         <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>The model explains <strong>{(result.r2*100).toFixed(1)}%</strong> of variance (R² = {fmt(result.r2,3)}, Adj. R² = {fmt(result.r2adj,3)}). F({result.df_m},{result.df_e}) = {fmt(result.f,2)}, p {fmtP(result.p_f)}.</p></div>
+                      </>
+                    )}
+                    {result._type==='model_lasso'&&(
+                      <>
+                        <h2 style={{fontFamily:"'Crimson Pro',serif",fontSize:22,fontWeight:600,marginBottom:4}}>Lasso Regression (L1)</h2>
+                        <div className="model-formula">{result.dep} ~ {result.preds.join(' + ')} · λ = {result.lambda}</div>
+                        <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:14,padding:'8px 12px',background:'rgba(245,158,11,0.07)',borderRadius:7,border:'1px solid rgba(245,158,11,0.15)',lineHeight:1.6}}>
+                          Lasso (L1) shrinks small coefficients exactly to zero, performing automatic variable selection.
+                          <strong> {result.nonzero} of {result.preds.length} predictor{result.preds.length!==1?'s':''} retained.</strong>
+                        </div>
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+                          {[['R²',fmt(result.r2,4)],['λ',String(result.lambda)],['Non-zero β',String(result.nonzero)],['RMSE',fmt(result.rmse,4)]].map(([l,v])=><StatCard key={l} label={l} value={v}/>)}
+                        </div>
+                        <table className="result-table" style={{marginBottom:12}}>
+                          <thead><tr><th>Term</th><th>β (shrunk)</th><th>Status</th></tr></thead>
+                          <tbody>{result.names.map((name,i)=>{
+                            const zeroed=i>0&&Math.abs(result.beta[i])<1e-8;
+                            return(
+                              <tr key={name} className="coef-row">
+                                <td style={{fontWeight:600}}>{name}</td>
+                                <td style={{color:zeroed?'var(--text-light)':'inherit',fontFamily:'monospace'}}>{zeroed?'0':fmt(result.beta[i])}</td>
+                                <td>{i===0?<span className="pill pill-blue" style={{fontSize:10}}>intercept</span>:zeroed?<span className="pill" style={{background:'rgba(107,114,128,0.1)',color:'#6B7280',fontSize:10}}>excluded</span>:<span className="pill pill-green" style={{fontSize:10}}>retained</span>}</td>
+                              </tr>
+                            );
+                          })}</tbody>
+                        </table>
+                        <div className="result-summary"><p style={{fontSize:13,lineHeight:1.7}}>Lasso drove {result.preds.length-result.nonzero} predictor{result.preds.length-result.nonzero!==1?'s':''} to zero. R² = {fmt(result.r2,3)} on training data. Increase λ for sparser models; decrease for OLS-like behaviour.</p></div>
+                        <SigLegend/>
                       </>
                     )}
                     {result._type==='model_ridge'&&(
