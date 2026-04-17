@@ -430,6 +430,144 @@ function lassoReg(y_vals,X_mat,lambda=1.0,maxIter=2000,tol=1e-7){
   return{beta:betaOut,fitted,residuals:resid,r2,lambda,n,nonzero,df_e,rmse:Math.sqrt(sse/df_e)};
 }
 
+/* ── Linear Mixed Model: Random Intercepts, iterative GLS + MoM REML ── */
+function lmmFit(y_vals,X_mat,group_ids,maxIter=60,tol=1e-6){
+  const n=y_vals.length;
+  const X=X_mat.map(row=>[1,...row]);
+  const k=X[0].length;
+  const gnames=[...new Set(group_ids.map(String))].filter(g=>g!='');
+  const q=gnames.length;
+  if(q<2||n<k+q)return null;
+  const gidx=group_ids.map(g=>gnames.indexOf(String(g)));
+  const gnj=gnames.map((_,gi)=>gidx.filter(i=>i===gi).length);
+
+  // Seed with OLS
+  const XtX0=Array.from({length:k},(_,i)=>Array.from({length:k},(_,j)=>X.reduce((s,r)=>s+r[i]*r[j],0)));
+  const Xty0=Array.from({length:k},(_,i)=>X.reduce((s,r,ri)=>s+r[i]*y_vals[ri],0));
+  const inv0=invertMatrix(XtX0);if(!inv0)return null;
+  let beta=inv0.map(row=>row.reduce((s,v,j)=>s+v*Xty0[j],0));
+  const r0=y_vals.map((y,i)=>y-X[i].reduce((s,v,j)=>s+v*beta[j],0));
+  let s2e=Math.max(vvariance(r0),1e-6),s2u=Math.max(s2e*0.5,1e-6);
+
+  for(let iter=0;iter<maxIter;iter++){
+    let XtViX=Array.from({length:k},()=>Array(k).fill(0)),XtViy=Array(k).fill(0);
+    for(let gi=0;gi<q;gi++){
+      const obs=[];for(let i=0;i<n;i++)if(gidx[i]===gi)obs.push(i);
+      const ni=obs.length;if(!ni)continue;
+      const c=s2u/(s2e+ni*s2u);
+      for(let a=0;a<ni;a++)for(let b=0;b<ni;b++){
+        const vij=(a===b?1/s2e:0)-c/s2e;
+        for(let p=0;p<k;p++){
+          XtViy[p]+=X[obs[a]][p]*vij*y_vals[obs[b]];
+          for(let qq=0;qq<k;qq++)XtViX[p][qq]+=X[obs[a]][p]*vij*X[obs[b]][qq];
+        }
+      }
+    }
+    const inv=invertMatrix(XtViX);if(!inv)break;
+    const nb=inv.map(row=>row.reduce((s,v,j)=>s+v*XtViy[j],0));
+    const resid=y_vals.map((y,i)=>y-X[i].reduce((s,v,j)=>s+v*nb[j],0));
+    const gm=gnames.map((_,gi)=>{const g=resid.filter((_,i)=>gidx[i]===gi);return g.length?vmean(g):0;});
+    const ssw=resid.reduce((s,r,i)=>s+(r-gm[gidx[i]])**2,0);
+    const ssb=gnames.reduce((s,_,gi)=>s+gnj[gi]*gm[gi]**2,0);
+    const dfw=n-q,dfb=Math.max(q-k,1);
+    const n0=(n-gnj.reduce((s,nj)=>s+nj**2/n,0))/Math.max(q-1,1);
+    const ns2e=Math.max(ssw/Math.max(dfw,1),1e-8);
+    const ns2u=Math.max((ssb/Math.max(dfb,1)-ns2e)/Math.max(n0,1),0);
+    const delta=Math.max(Math.abs(ns2e-s2e),Math.abs(ns2u-s2u));
+    beta=nb;s2e=ns2e;s2u=ns2u;
+    if(delta<tol)break;
+  }
+
+  // Final information matrix
+  let XtViX_f=Array.from({length:k},()=>Array(k).fill(0));
+  for(let gi=0;gi<q;gi++){
+    const obs=[];for(let i=0;i<n;i++)if(gidx[i]===gi)obs.push(i);
+    const ni=obs.length;if(!ni)continue;
+    const c=s2u/(s2e+ni*s2u);
+    for(let a=0;a<ni;a++)for(let b=0;b<ni;b++){
+      const vij=(a===b?1/s2e:0)-c/s2e;
+      for(let p=0;p<k;p++)for(let qq=0;qq<k;qq++)XtViX_f[p][qq]+=X[obs[a]][p]*vij*X[obs[b]][qq];
+    }
+  }
+  const Vb=invertMatrix(XtViX_f);
+  const se=Vb?Vb.map((row,i)=>Math.sqrt(Math.max(0,row[i]))):beta.map(()=>NaN);
+  const df_r=Math.max(n-k-q,1);
+  const t_v=beta.map((b,i)=>b/se[i]);
+  const p_v=t_v.map(t=>2*(1-tCDF(Math.abs(t),df_r)));
+  const tc=tCrit(df_r,0.025);
+  const fitted=y_vals.map((_,i)=>X[i].reduce((s,v,j)=>s+v*beta[j],0));
+  const residuals=y_vals.map((y,i)=>y-fitted[i]);
+  const sse=residuals.reduce((s,r)=>s+r**2,0);
+  const ymean=vmean(y_vals);
+  const sst=y_vals.reduce((s,y)=>s+(y-ymean)**2,0);
+  const r2=Math.max(0,1-sse/sst);
+  const icc=s2u/(s2u+s2e);
+  const blups=gnames.map((_,gi)=>{
+    const gr=[];for(let i=0;i<n;i++)if(gidx[i]===gi)gr.push(residuals[i]);
+    return s2u*vmean(gr)/(s2u+s2e/gr.length);
+  });
+  const ll=-0.5*(n*Math.log(2*Math.PI)+n*Math.log(s2e)+
+    gnames.reduce((s,_,gi)=>s+Math.log(1+gnj[gi]*s2u/s2e),0)+sse/s2e);
+  const aic=-2*ll+2*(k+2),bic=-2*ll+(k+2)*Math.log(n);
+  return{beta,se,t_v,p_v,fitted,residuals,r2,icc,sigma2_e:s2e,sigma2_u:s2u,
+    n,k,q,df_r,ci_lo:beta.map((b,i)=>b-tc*se[i]),ci_hi:beta.map((b,i)=>b+tc*se[i]),
+    gnames,blups,aic,bic,ll};
+}
+
+/* ── Logistic GLMM: PQL approximation, random intercepts ── */
+function glmmPQL(y_vals,X_mat,group_ids,maxIter=60,tol=1e-6){
+  const n=y_vals.length;
+  const X=X_mat.map(row=>[1,...row]);
+  const k=X[0].length;
+  const gnames=[...new Set(group_ids.map(String))].filter(g=>g!='');
+  const q=gnames.length;
+  if(q<2)return null;
+  const gidx=group_ids.map(g=>gnames.indexOf(String(g)));
+  let beta=new Array(k).fill(0),u=new Array(q).fill(0),s2u=1.0;
+
+  for(let outer=0;outer<maxIter;outer++){
+    const eta=y_vals.map((_,i)=>X[i].reduce((s,v,j)=>s+v*beta[j],0)+u[gidx[i]]);
+    const mu=eta.map(e=>sigmoid(e));
+    const W=mu.map(m=>Math.max(m*(1-m),1e-6));
+    const zW=eta.map((e,i)=>e+(y_vals[i]-mu[i])/W[i]);
+    let XtWX=Array.from({length:k},()=>Array(k).fill(0)),XtWz=Array(k).fill(0);
+    for(let i=0;i<n;i++){
+      const zo=zW[i]-u[gidx[i]];
+      for(let p=0;p<k;p++){XtWz[p]+=X[i][p]*W[i]*zo;for(let qq=0;qq<k;qq++)XtWX[p][qq]+=X[i][p]*W[i]*X[i][qq];}
+    }
+    const inv=invertMatrix(XtWX);if(!inv)break;
+    const nb=inv.map(row=>row.reduce((s,v,j)=>s+v*XtWz[j],0));
+    const nu=gnames.map((_,gi)=>{
+      const obs=[];for(let i=0;i<n;i++)if(gidx[i]===gi)obs.push(i);
+      const num=obs.reduce((s,i)=>s+W[i]*(zW[i]-X[i].reduce((ss,v,j)=>ss+v*nb[j],0)),0);
+      const den=obs.reduce((s,i)=>s+W[i],0)+1/s2u;
+      return num/den;
+    });
+    const ns2u=Math.max(nu.reduce((s,ui)=>s+ui**2,0)/q,0.001);
+    const delta=Math.max(nb.reduce((mx,b,i)=>Math.max(mx,Math.abs(b-beta[i])),0),Math.abs(ns2u-s2u));
+    beta=nb;u=nu;s2u=ns2u;
+    if(delta<tol)break;
+  }
+  const eta_f=y_vals.map((_,i)=>X[i].reduce((s,v,j)=>s+v*beta[j],0)+u[gidx[i]]);
+  const mu_f=eta_f.map(e=>sigmoid(e));
+  const W_f=mu_f.map(m=>Math.max(m*(1-m),1e-6));
+  let XtWX_f=Array.from({length:k},()=>Array(k).fill(0));
+  for(let i=0;i<n;i++)for(let p=0;p<k;p++)for(let qq=0;qq<k;qq++)XtWX_f[p][qq]+=X[i][p]*W_f[i]*X[i][qq];
+  const inv_f=invertMatrix(XtWX_f);
+  const se=inv_f?inv_f.map((row,i)=>Math.sqrt(Math.max(0,row[i]))):beta.map(()=>NaN);
+  const z_v=beta.map((b,i)=>b/se[i]);
+  const p_v=z_v.map(z=>2*(1-normalCDF(Math.abs(z))));
+  const ll=y_vals.reduce((s,y,i)=>s+y*Math.log(mu_f[i]+1e-15)+(1-y)*Math.log(1-mu_f[i]+1e-15),0)
+    -u.reduce((s,ui)=>s+ui**2/(2*s2u),0);
+  const pred=mu_f.map(m=>m>=0.5?1:0);
+  const acc=pred.filter((p,i)=>p===y_vals[i]).length/n;
+  const icc=s2u/(s2u+Math.PI**2/3);
+  return{beta,se,z_v,p_v,fitted:mu_f,sigma2_u:s2u,icc,n,k,q,ll,aic:-2*ll+2*(k+1),acc,
+    or:beta.map(b=>Math.exp(b)),
+    ci_lo:beta.map((b,i)=>b-1.96*se[i]),ci_hi:beta.map((b,i)=>b+1.96*se[i]),
+    gnames,blups:u};
+}
+
 /* ═══════════════════════════════════════════════════════════
    DATA UTILITIES
 ═══════════════════════════════════════════════════════════ */
@@ -1076,11 +1214,12 @@ function CleanModule({state,dispatch}){
 // values: {key: colName | null}
 // onChange: fn(newValues)
 function DragVarPanel({ds,slotDefs,values,onChange}){
-  const[dragging,setDragging]=useState(null);
+  const dragRef=useRef(null);
   const[overSlot,setOverSlot]=useState(null);
+  const[,tick]=useReducer(n=>n+1,0);
 
   useEffect(()=>{
-    const onEnd=()=>{setDragging(null);setOverSlot(null);};
+    const onEnd=()=>{dragRef.current=null;setOverSlot(null);tick();};
     window.addEventListener('dragend',onEnd);
     return()=>window.removeEventListener('dragend',onEnd);
   },[]);
@@ -1089,34 +1228,40 @@ function DragVarPanel({ds,slotDefs,values,onChange}){
   const available=ds?ds.columns.filter(c=>!assigned.includes(c)):[];
 
   const startDrag=(e,col,fromSlot)=>{
+    dragRef.current={col,fromSlot:fromSlot||'pool'};
     e.dataTransfer.effectAllowed='move';
     e.dataTransfer.setData('text/plain',col);
-    setDragging({col,fromSlot:fromSlot||'pool'});
+    // ⚠ No setState here — avoids re-render that breaks the drag gesture
   };
 
   const isIncompat=(slotKey)=>{
+    const d=dragRef.current;
     const def=slotDefs.find(s=>s.key===slotKey);
-    return!!(dragging&&def?.types&&!def.types.includes(ds?.types[dragging.col]));
+    return!!(d&&def?.types&&!def.types.includes(ds?.types[d.col]));
   };
 
   const dropOnSlot=(e,slotKey)=>{
     e.preventDefault();e.stopPropagation();
     setOverSlot(null);
-    if(!dragging)return;
-    if(isIncompat(slotKey)){setDragging(null);return;}
+    const d=dragRef.current;
+    if(!d)return;
+    if(isIncompat(slotKey)){dragRef.current=null;return;}
     const next={...values};
-    if(dragging.fromSlot!=='pool')next[dragging.fromSlot]=null;
-    next[slotKey]=dragging.col;
-    onChange(next);
-    setDragging(null);
+    if(d.fromSlot!=='pool')next[d.fromSlot]=null;
+    next[slotKey]=d.col;
+    dragRef.current=null;
+    onChange(next);tick();
   };
 
   const dropOnPool=(e)=>{
     e.preventDefault();e.stopPropagation();
     setOverSlot(null);
-    if(dragging?.fromSlot&&dragging.fromSlot!=='pool')onChange({...values,[dragging.fromSlot]:null});
-    setDragging(null);
+    const d=dragRef.current;
+    if(d?.fromSlot&&d.fromSlot!=='pool')onChange({...values,[d.fromSlot]:null});
+    dragRef.current=null;tick();
   };
+
+  const dragging=dragRef.current;
 
   return(
     <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -1130,7 +1275,7 @@ function DragVarPanel({ds,slotDefs,values,onChange}){
         >
           {available.map(col=>(
             <div key={col}
-              className={`var-chip ${ds&&ds.types[col]==='numeric'?'num':'cat'}${dragging?.col===col&&dragging?.fromSlot==='pool'?' dragging':''}`}
+              className={`var-chip ${ds&&ds.types[col]==='numeric'?'num':'cat'}`}
               draggable
               onDragStart={e=>startDrag(e,col,'pool')}
               title={`${col} · ${ds?.types[col]}`}
@@ -1141,7 +1286,6 @@ function DragVarPanel({ds,slotDefs,values,onChange}){
           {!available.length&&<span style={{fontSize:11,color:'var(--text-light)',fontStyle:'italic',padding:'2px 4px'}}>All variables assigned</span>}
         </div>
       </div>
-
       {slotDefs.map(def=>{
         const val=values[def.key];
         const isOver=overSlot===def.key;
@@ -1154,22 +1298,13 @@ function DragVarPanel({ds,slotDefs,values,onChange}){
             </div>
             <div
               className={`drop-slot${isOver&&!incompat?' over':''}${val?' filled':''}`}
-              style={{
-                borderColor:isOver?(incompat?'var(--danger)':'var(--blue)'):val?'var(--border)':'#D5D2CC',
-                background:isOver?(incompat?'rgba(239,68,68,0.05)':'rgba(74,127,168,0.07)'):'white',
-                cursor:incompat&&isOver?'not-allowed':'default',
-                transition:'border-color 0.12s,background 0.12s',
-              }}
+              style={{borderColor:isOver?(incompat?'var(--danger)':'var(--blue)'):val?'var(--border)':'#D5D2CC',background:isOver?(incompat?'rgba(239,68,68,0.05)':'rgba(74,127,168,0.07)'):'white',cursor:incompat&&isOver?'not-allowed':'default',transition:'border-color 0.12s,background 0.12s'}}
               onDragOver={e=>{e.preventDefault();e.dataTransfer.dropEffect=incompat?'none':'move';setOverSlot(def.key);}}
               onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOverSlot(s=>s===def.key?null:s);}}
               onDrop={e=>dropOnSlot(e,def.key)}
             >
               {val?(
-                <div
-                  className={`var-chip ${ds?.types[val]==='numeric'?'num':'cat'}`}
-                  draggable
-                  onDragStart={e=>startDrag(e,val,def.key)}
-                >
+                <div className={`var-chip ${ds?.types[val]==='numeric'?'num':'cat'}`} draggable onDragStart={e=>startDrag(e,val,def.key)}>
                   <span className="var-badge">{ds?.types[val]==='numeric'?'#':'T'}</span>
                   {val}
                   <span onClick={e=>{e.stopPropagation();onChange({...values,[def.key]:null});}} style={{marginLeft:5,cursor:'pointer',opacity:0.45,fontSize:14,lineHeight:1}}>×</span>
@@ -1639,6 +1774,39 @@ function _renderResultChart(r,ds,cfg,el){
       type:'scatter',mode:'lines',x:[0,0],y:[nm[0],nm[nm.length-1]],
       line:{color:'#D1D5DB',width:1.5,dash:'dot'},showlegend:false,
     }],{...L,xaxis:{...L.xaxis,title:'Estimate',zeroline:true,zerolinecolor:'#D1D5DB',zerolinewidth:1.5},yaxis:{...L.yaxis,autorange:'reversed',title:''}},OPT);
+  }
+  else if(r._type==='model_lasso'){
+    const nm=r.names,betas=r.beta;
+    const colors=betas.map((b,i)=>i===0?'#9CA3AF':Math.abs(b)<1e-8?'#E5E7EB':b>0?PAL[0]:PAL[3]);
+    const labels=betas.map((b,i)=>i===0?'intercept':Math.abs(b)<1e-8?'zeroed':fmt(b,3));
+    Plotly.react(el,[{
+      type:'bar',x:nm,y:betas,marker:{color:colors},
+      text:labels,textposition:'outside',
+      hovertemplate:'%{x}: %{y:.4f}<extra></extra>',
+    }],{...L,title:{text:`Lasso Coefficients — λ = ${r.lambda}`,font:{size:12}},
+      xaxis:{...L.xaxis,title:''},
+      yaxis:{...L.yaxis,title:'β (L1-shrunk)',zeroline:true,zerolinecolor:'#D1D5DB',zerolinewidth:1.5}
+    },OPT);
+  }
+  else if(r._type==='model_lmm'&&r.gnames?.length){
+    Plotly.react(el,[{
+      type:'bar',x:r.gnames,y:r.blups,
+      marker:{color:r.blups.map(b=>b>0?PAL[0]:PAL[3]),opacity:0.8},
+      hovertemplate:'%{x}: ũ = %{y:.4f}<extra></extra>',
+    }],{...L,title:{text:'Random Intercept BLUPs by Group',font:{size:12}},
+      xaxis:{...L.xaxis,title:r.grpVar||'Group'},
+      yaxis:{...L.yaxis,title:'BLUP (ũ)',zeroline:true,zerolinecolor:'#D1D5DB',zerolinewidth:1.5}
+    },OPT);
+  }
+  else if(r._type==='model_glmm'&&r.gnames?.length){
+    Plotly.react(el,[{
+      type:'bar',x:r.gnames,y:r.blups,
+      marker:{color:r.blups.map(b=>b>0?PAL[0]:PAL[3]),opacity:0.8},
+      hovertemplate:'%{x}: ũ = %{y:.4f}<extra></extra>',
+    }],{...L,title:{text:'GLMM Random Intercepts by Group (log-odds scale)',font:{size:12}},
+      xaxis:{...L.xaxis,title:r.grpVar||'Group'},
+      yaxis:{...L.yaxis,title:'ũ (log-odds)',zeroline:true,zerolinecolor:'#D1D5DB',zerolinewidth:1.5}
+    },OPT);
   }
 }
 
@@ -2184,51 +2352,78 @@ function ModelsModule({state,dispatch}){
   function fitModel(){
     if(!ds||!cfg.dep||!cfg.preds.length)return alert('Select outcome and at least one predictor.');
     try{
+      let r=null;
       if(mtype==='ols'){
         const yv=getNum(ds,cfg.dep);
-        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const Xm=ds.rows.map(row=>cfg.preds.map(p=>Number(row[p]))).filter((_,i)=>!isNaN(yv[i]));
         const yc=yv.filter(v=>!isNaN(v));
-        const r=olsRegression(yc,Xm);
-        if(r)setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_ols'});
-        else alert('Matrix is singular. Check for collinear predictors.');
+        r=olsRegression(yc,Xm);
+        if(r)r={...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_ols'};
+        else return alert('Matrix is singular. Check for collinear predictors.');
       }else if(mtype==='logistic'){
         const vals=getVal(ds,cfg.dep);
         const uniq=[...new Set(vals.filter(v=>v!==null&&v!==''))];
-        if(uniq.length!==2)return alert('Logistic regression requires exactly 2 unique outcome values (binary).');
+        if(uniq.length!==2)return alert('Logistic regression requires exactly 2 unique outcome values.');
         const yv=vals.map(v=>v===uniq[1]?1:v===uniq[0]?0:NaN);
-        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const Xm=ds.rows.map(row=>cfg.preds.map(p=>Number(row[p]))).filter((_,i)=>!isNaN(yv[i]));
         const yc=yv.filter(v=>!isNaN(v));
-        const r=logisticReg(yc,Xm);
-        setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],levels:uniq,_type:'model_logistic'});
+        r={...logisticReg(yc,Xm),dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],levels:uniq,_type:'model_logistic'};
       }else if(mtype==='poisson'){
         const yv=getNum(ds,cfg.dep);
-        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const Xm=ds.rows.map(row=>cfg.preds.map(p=>Number(row[p]))).filter((_,i)=>!isNaN(yv[i]));
         const yc=yv.filter(v=>!isNaN(v));
-        const r=poissonReg(yc,Xm);
-        setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_poisson'});
+        r={...poissonReg(yc,Xm),dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_poisson'};
       }else if(mtype==='lasso'){
         const yv=getNum(ds,cfg.dep);
-        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const Xm=ds.rows.map(row=>cfg.preds.map(p=>Number(row[p]))).filter((_,i)=>!isNaN(yv[i]));
         const yc=yv.filter(v=>!isNaN(v));
-        const r=lassoReg(yc,Xm,Number(cfg.lambda)||1.0);
-        if(r)setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_lasso'});
-        else alert('Lasso fit failed.');
+        r=lassoReg(yc,Xm,Number(cfg.lambda)||1.0);
+        if(r)r={...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_lasso'};
+        else return alert('Lasso fit failed.');
       }else if(mtype==='ridge'){
         const yv=getNum(ds,cfg.dep);
-        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const Xm=ds.rows.map(row=>cfg.preds.map(p=>Number(row[p]))).filter((_,i)=>!isNaN(yv[i]));
         const yc=yv.filter(v=>!isNaN(v));
-        const r=ridgeRegression(yc,Xm,Number(cfg.lambda)||1.0);
-        if(r)setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_ridge'});
-        else alert('Matrix is singular. Check predictors.');
+        r=ridgeRegression(yc,Xm,Number(cfg.lambda)||1.0);
+        if(r)r={...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_ridge'};
+        else return alert('Matrix is singular. Check predictors.');
       }else if(mtype==='negbinom'){
         const yv=getNum(ds,cfg.dep);
-        const Xm=ds.rows.map(r=>cfg.preds.map(p=>Number(r[p]))).filter((_,i)=>!isNaN(yv[i]));
+        const Xm=ds.rows.map(row=>cfg.preds.map(p=>Number(row[p]))).filter((_,i)=>!isNaN(yv[i]));
         const yc=yv.filter(v=>!isNaN(v));
-        const r=negativeBinomialReg(yc,Xm);
-        if(r)setResult({...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_negbinom'});
-        else alert('Negative Binomial fit failed. Check that outcome contains non-negative integers.');
+        r=negativeBinomialReg(yc,Xm);
+        if(r)r={...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],_type:'model_negbinom'};
+        else return alert('Negative Binomial fit failed. Check that outcome contains non-negative integers.');
+      }else if(mtype==='lmm'){
+        if(!cfg.grpVar)return alert('Select a grouping variable for random effects.');
+        const yv=getNum(ds,cfg.dep);
+        const validIdx=yv.map((v,i)=>!isNaN(v)?i:-1).filter(i=>i>=0);
+        const Xm=validIdx.map(i=>cfg.preds.map(p=>Number(ds.rows[i][p])));
+        const yc=validIdx.map(i=>yv[i]);
+        const gc=validIdx.map(i=>String(ds.rows[i][cfg.grpVar]||''));
+        r=lmmFit(yc,Xm,gc);
+        if(r)r={...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],grpVar:cfg.grpVar,_type:'model_lmm'};
+        else return alert('LMM fit failed. Ensure ≥2 groups and sufficient observations per group.');
+      }else if(mtype==='glmm'){
+        if(!cfg.grpVar)return alert('Select a grouping variable for random effects.');
+        const vals=getVal(ds,cfg.dep);
+        const uniq=[...new Set(vals.filter(v=>v!==null&&v!==''))];
+        if(uniq.length!==2)return alert('GLMM logistic requires exactly 2 unique outcome values (binary).');
+        const yv=vals.map(v=>v===uniq[1]?1:v===uniq[0]?0:NaN);
+        const validIdx=yv.map((v,i)=>!isNaN(v)?i:-1).filter(i=>i>=0);
+        const Xm=validIdx.map(i=>cfg.preds.map(p=>Number(ds.rows[i][p])));
+        const yc=validIdx.map(i=>yv[i]);
+        const gc=validIdx.map(i=>String(ds.rows[i][cfg.grpVar]||''));
+        r=glmmPQL(yc,Xm,gc);
+        if(r)r={...r,dep:cfg.dep,preds:cfg.preds,names:['(Intercept)',...cfg.preds],levels:uniq,grpVar:cfg.grpVar,_type:'model_glmm'};
+        else return alert('GLMM fit failed. Ensure ≥2 groups and binary outcome.');
       }
-    }catch(e){alert('Model error: '+e.message+'. Check your data for issues.');}
+      if(r){
+        setResult(r);
+        // ← Wire every model result into the shared analyses store so the report sees it
+        dispatch({type:'ADD_ANALYSIS',a:{id:'an_'+Date.now(),test:mtype,cfg:{...cfg},result:r,dsId:ds.id,t:Date.now()}});
+      }
+    }catch(e){alert('Model error: '+e.message);}
   }
 
   if(!ds)return(<div style={{display:'flex',flexDirection:'column',height:'100%'}}><div className="module-header"><div className="module-title">Model Builder</div></div><div className="empty-state"><div style={{fontSize:48,opacity:0.18}}>⬡</div><p style={{color:'var(--text-muted)'}}>Load a dataset first.</p></div></div>);
@@ -2240,8 +2435,8 @@ function ModelsModule({state,dispatch}){
     {id:'logistic',l:'Logistic Regression',sub:'Binary outcome · log-odds',avail:true},
     {id:'poisson',l:'Poisson GLM',sub:'Count outcome · log-link',avail:true},
     {id:'negbinom',l:'Negative Binomial',sub:'Overdispersed counts · log-link',avail:true},
-    {id:'lmm',l:'Linear Mixed Model',sub:'Random intercepts/slopes',avail:false},
-    {id:'glmm',l:'Generalized LMM',sub:'Mixed effects + link fn',avail:false},
+    {id:'lmm',l:'Linear Mixed Model',sub:'Random intercepts · iterative GLS',avail:true},
+  {id:'glmm',l:'Logistic GLMM',sub:'Binary outcome · PQL random intercepts',avail:true},
   ];
 
   return(
@@ -2476,60 +2671,187 @@ function ReportModule({state}){
 
   function generate(){
     const analyses=state.analyses.slice(0,20);
-    let html=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${title}</title><style>
+    const MODEL_LABEL={
+      ols:'Multiple Linear Regression',logistic:'Logistic Regression',poisson:'Poisson GLM',
+      lasso:'Lasso Regression',ridge:'Ridge Regression',negbinom:'Negative Binomial GLM',
+      lmm:'Linear Mixed Model',glmm:'Logistic GLMM',
+    };
+    const getLabel=a=>TESTS.find(t=>t.id===a.test)?.l||MODEL_LABEL[a.test]||a.test;
+
+    // Gather findings for the summary paragraph
+    const sigResults=analyses.filter(a=>{const r=a.result;return(r.p!==undefined&&r.p<0.05)||(r.p_f!==undefined&&r.p_f<0.05)||(r.chi2!==undefined&&r.p<0.05)||(r.H!==undefined&&r.p<0.05);});
+    const totalTests=analyses.length;
+
+    let html=`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${title}</title>
+<style>
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:Georgia,serif;max-width:900px;margin:0 auto;padding:44px 28px;color:#1A1D23;background:#FAFAF7;line-height:1.75;}
-h1{font-size:30px;font-weight:600;color:#0D1B2A;margin-bottom:6px;letter-spacing:-0.02em;}
-h2{font-size:20px;font-weight:600;color:#0D1B2A;margin:36px 0 12px;padding-bottom:7px;border-bottom:2px solid #E8E6E1;}
-h3{font-size:16px;font-weight:600;margin:24px 0 8px;color:#374151;}
-p{margin-bottom:12px;}
-.meta{font-family:monospace;font-size:12px;color:#6B7280;margin-bottom:28px;}
-table{width:100%;border-collapse:collapse;margin:16px 0;font-size:13px;}
-th{background:#0D1B2A;color:white;padding:8px 12px;text-align:left;font-family:Georgia;font-size:12px;}
-td{padding:7px 12px;border-bottom:1px solid #E8E6E1;font-family:Courier New,monospace;}
-tr:nth-child(even) td{background:#F5F4F0;}
-.note{background:#EFF6FF;border-left:3px solid #3B82F6;padding:12px 16px;margin:20px 0;font-size:13px;border-radius:0 6px 6px 0;}
-.sig{background:#FEE2E2;color:#991B1B;padding:1px 7px;border-radius:20px;font-size:11px;font-family:monospace;}
-.notsig{background:#F3F4F6;color:#6B7280;padding:1px 7px;border-radius:20px;font-size:11px;font-family:monospace;}
-.result-block{background:white;border:1px solid #E8E6E1;border-radius:8px;padding:16px;margin:16px 0;}
-footer{margin-top:56px;padding-top:16px;border-top:1px solid #E8E6E1;font-size:11px;color:#9CA3AF;}
-@media print{body{max-width:100%;}}
+body{font-family:Georgia,'Times New Roman',serif;max-width:820px;margin:0 auto;padding:52px 36px;color:#1A1D23;background:#FAFAF8;line-height:1.85;font-size:15px;}
+h1{font-size:34px;font-weight:700;color:#0D1B2A;margin-bottom:6px;letter-spacing:-0.03em;line-height:1.1;}
+.byline{font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#6B7280;margin-bottom:36px;border-bottom:2px solid #E8E6E1;padding-bottom:14px;}
+h2{font-size:22px;font-weight:700;color:#0D1B2A;margin:48px 0 14px;padding-left:12px;border-left:4px solid #C8903E;font-family:'Helvetica Neue',Arial,sans-serif;}
+h3{font-size:16px;font-weight:600;margin:32px 0 10px;color:#374151;font-family:'Helvetica Neue',Arial,sans-serif;}
+p{margin-bottom:14px;color:#1A1D23;}
+.narrative{font-size:15px;line-height:1.95;color:#1A1D23;margin-bottom:18px;}
+.highlight{background:linear-gradient(120deg,rgba(200,144,62,0.12) 0%,rgba(200,144,62,0.06) 100%);padding:18px 22px;border-left:4px solid #C8903E;border-radius:0 8px 8px 0;margin:18px 0;font-size:14px;line-height:1.8;}
+.finding-block{background:#fff;border:1px solid #E8E6E1;border-radius:10px;padding:22px 24px;margin:22px 0;box-shadow:0 2px 8px rgba(0,0,0,0.04);}
+.finding-block .label{font-family:'Helvetica Neue',Arial,sans-serif;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.09em;color:#6B7280;margin-bottom:10px;}
+table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px;font-family:'Helvetica Neue',Arial,sans-serif;}
+th{background:#0D1B2A;color:#fff;padding:8px 12px;text-align:left;font-size:11px;letter-spacing:0.03em;}
+td{padding:7px 12px;border-bottom:1px solid #E8E6E1;font-family:'Courier New',monospace;font-size:12px;}
+tr:nth-child(even) td{background:#F7F6F2;}
+.sig{background:#FEE2E2;color:#991B1B;padding:1px 8px;border-radius:20px;font-size:11px;}
+.notsig{background:#F3F4F6;color:#6B7280;padding:1px 8px;border-radius:20px;font-size:11px;}
+.stat-inline{font-family:'Courier New',monospace;background:#F3F4F6;padding:1px 6px;border-radius:4px;font-size:13px;}
+.summary-box{background:#0D1B2A;color:#fff;border-radius:10px;padding:24px 28px;margin:36px 0;}
+.summary-box h3{color:#C8903E;margin-top:0;}
+.summary-box p{color:rgba(255,255,255,0.82);font-size:14px;}
+.note{background:#EFF6FF;border-left:3px solid #3B82F6;padding:12px 16px;margin:20px 0;font-size:13px;border-radius:0 6px 6px 0;font-family:'Helvetica Neue',Arial,sans-serif;}
+footer{margin-top:64px;padding-top:16px;border-top:1px solid #E8E6E1;font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#9CA3AF;}
+@media print{body{max-width:100%;padding:20px;}h2{page-break-before:auto;}}
 </style></head><body>
 <h1>${title}</h1>
-<div class="meta">Generated by StatLab Pro &middot; ${new Date().toLocaleString()} &middot; Local-first browser-based analysis</div>`;
+<div class="byline">Generated by StatLab Pro &middot; ${new Date().toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'})} &middot; Local-first browser analysis &middot; No data transmitted externally</div>`;
 
+    // ── INTRODUCTION ──────────────────────────────────────────────
     if(sects.intro){
-      html+=`<h2>Introduction</h2><p>This report summarizes statistical analyses performed using StatLab Pro, a local-first browser-based statistical computing environment. All computations were conducted in-browser using exact numerical algorithms.</p>`;
+      html+=`<h2>Introduction</h2>`;
+      const numTests=totalTests;
+      const dsDesc=ds?`drawing on a dataset of <strong>${ds.rows.length}</strong> observations spanning <strong>${ds.columns.length}</strong> variables`:'without a primary loaded dataset';
+      html+=`<p>This document reports the results of a statistical investigation conducted using StatLab Pro, ${dsDesc}.
+      ${numTests>0
+        ?`Across <strong>${numTests}</strong> analytic procedure${numTests!==1?'s':''}, we examined patterns in the data using a combination of ${[...new Set(analyses.map(a=>getLabel(a)))].slice(0,3).join(', ')}${analyses.length>3?' and other methods':''}.`
+        :'No formal analyses have been recorded in this session yet.'
+      }
+      All computations were performed locally in the browser using exact numerical methods; no data was shared with any external server.</p>`;
+      if(sigResults.length>0){
+        html+=`<div class="highlight">
+          <strong>Key finding:</strong> Of the ${totalTests} test${totalTests!==1?'s':''} conducted,
+          <strong>${sigResults.length}</strong> yielded statistically significant results at α = .05,
+          suggesting meaningful patterns worthy of further investigation and replication.
+        </div>`;
+      }
     }
+
+    // ── DATA OVERVIEW ─────────────────────────────────────────────
     if(sects.data&&ds){
-      html+=`<h2>Data Description</h2><p>Dataset: <strong>${ds.name}</strong> &mdash; ${ds.rows.length} observations, ${ds.columns.length} variables.</p>
-<table><thead><tr><th>Variable</th><th>Type</th><th>n</th><th>Mean / Top Level</th><th>SD / N Unique</th></tr></thead><tbody>`;
+      const nums=numCols(ds),cats=catCols(ds);
+      html+=`<h2>Data Overview</h2>
+      <p>The primary dataset — <em>${ds.name}</em> — contained <strong>${ds.rows.length}</strong> observations recorded across <strong>${ds.columns.length}</strong> variables:
+      ${nums.length} continuous (${nums.slice(0,4).join(', ')}${nums.length>4?', …':''}) and ${cats.length} categorical (${cats.slice(0,3).join(', ')}${cats.length>3?', …':''}).</p>`;
+      if(nums.length>0){
+        const summaries=nums.slice(0,5).map(col=>{const s=describe(getNum(ds,col));return `<em>${col}</em> ranged from ${fmt(s.min,2)} to ${fmt(s.max,2)} (M = ${fmt(s.mean,2)}, SD = ${fmt(s.sd,2)})`;}).join('; ');
+        html+=`<p>Descriptively: ${summaries}.</p>`;
+      }
+      html+=`<table><thead><tr><th>Variable</th><th>Type</th><th>n</th><th>Mean / Mode</th><th>SD / Levels</th><th>Range</th></tr></thead><tbody>`;
       ds.columns.forEach(col=>{
-        if(ds.types[col]==='numeric'){const v=getNum(ds,col);const s=describe(v);html+=`<tr><td>${col}</td><td>Numeric</td><td>${s.n}</td><td>${fmt(s.mean,3)}</td><td>${fmt(s.sd,3)}</td></tr>`;}
-        else{const vals=getVal(ds,col);const freq={};vals.forEach(v=>{freq[v]=(freq[v]||0)+1;});const top=Object.entries(freq).sort((a,b)=>b[1]-a[1])[0];html+=`<tr><td>${col}</td><td>Text</td><td>${vals.filter(v=>v!='').length}</td><td>${top?top[0]:'—'}</td><td>${Object.keys(freq).length} levels</td></tr>`;}
+        if(ds.types[col]==='numeric'){
+          const v=getNum(ds,col);const s=describe(v);
+          html+=`<tr><td>${col}</td><td>Continuous</td><td>${s.n}</td><td>${fmt(s.mean,3)}</td><td>${fmt(s.sd,3)}</td><td>[${fmt(s.min,2)}, ${fmt(s.max,2)}]</td></tr>`;
+        }else{
+          const vals=getVal(ds,col);const freq={};vals.forEach(v=>{freq[String(v)]=(freq[String(v)]||0)+1;});
+          const top=Object.entries(freq).filter(([k])=>k!=='null'&&k!=='').sort((a,b)=>b[1]-a[1])[0];
+          html+=`<tr><td>${col}</td><td>Categorical</td><td>${vals.filter(v=>v!='').length}</td><td>${top?top[0]:'—'}</td><td>${Object.keys(freq).filter(k=>k!=='').length} levels</td><td>—</td></tr>`;
+        }
       });
       html+=`</tbody></table>`;
     }
+
+    // ── ANALYSES ──────────────────────────────────────────────────
     if(sects.analyses&&analyses.length>0){
-      html+=`<h2>Statistical Results</h2>`;
-      analyses.forEach((a,i)=>{
-        const r=a.result;const label=TESTS.find(t=>t.id===a.test)?.l||a.test;
-        html+=`<div class="result-block"><h3>${i+1}. ${label}</h3>`;
+      html+=`<h2>Statistical Analyses</h2>
+      <p>The following section walks through each analytic procedure in the order it was conducted.
+      For each test, we describe the research question addressed, the statistical approach taken, and what the results reveal about the data.</p>`;
+
+      analyses.forEach((a,idx)=>{
+        const r=a.result;const label=getLabel(a);
+        const narr=narrativeResult(r,a.cfg||{});
+        const isSig=(r.p!==undefined&&r.p<0.05)||(r.p_f!==undefined&&r.p_f<0.05)||(r.p_f!==undefined&&r.p_f<0.05);
+
+        html+=`<div class="finding-block">
+        <div class="label">${idx+1} of ${analyses.length} &nbsp;·&nbsp; ${label}${isSig?'  ✦ Significant':'  ·  n.s.'}</div>
+        <h3 style="margin-top:4px">${label}</h3>`;
+
+        if(narr){
+          html+=`<p class="narrative">${narr}</p>`;
+        }
+
+        // Condensed results table per type
         if(r._type==='descriptive'&&r.stats){
-          html+=`<table><thead><tr><th>Variable</th><th>n</th><th>Mean</th><th>SD</th><th>Median</th><th>Min</th><th>Max</th></tr></thead><tbody>`;
-          r.stats.forEach(s=>{html+=`<tr><td>${s.col}</td><td>${s.n}</td><td>${fmt(s.mean,3)}</td><td>${fmt(s.sd,3)}</td><td>${fmt(s.median,3)}</td><td>${fmt(s.min,3)}</td><td>${fmt(s.max,3)}</td></tr>`;});
+          html+=`<table><thead><tr><th>Variable</th><th>n</th><th>Mean</th><th>SD</th><th>Median</th><th>95% CI</th></tr></thead><tbody>`;
+          r.stats.forEach(s=>{html+=`<tr><td>${s.col}</td><td>${s.n}</td><td>${fmt(s.mean,3)}</td><td>${fmt(s.sd,3)}</td><td>${fmt(s.median,3)}</td><td>[${fmt(s.ci95_lo,3)}, ${fmt(s.ci95_hi,3)}]</td></tr>`;});
           html+=`</tbody></table>`;
-        }else if(r.t!==undefined){html+=`<p>t(${fmt(r.df,1)}) = ${fmt(r.t,3)}, p ${fmtP(r.p)} <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span>. 95% CI: [${fmt(r.ci_lo,3)}, ${fmt(r.ci_hi,3)}]. Cohen's d = ${fmt(r.d,3)}.</p>`;}
-        else if(r.F!==undefined){html+=`<p>F(${r.dfb},${r.dfw}) = ${fmt(r.F,3)}, p ${fmtP(r.p)} <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span>. &eta;&sup2; = ${fmt(r.eta2,3)}.</p>`;}
-        else if(r.r2!==undefined){html+=`<p>R&sup2; = ${fmt(r.r2,4)} (Adj. R&sup2; = ${fmt(r.r2adj,4)}). F(${r.df_m},${r.df_e}) = ${fmt(r.f,3)}, p ${fmtP(r.p_f)}. RMSE = ${fmt(r.rmse,4)}.</p>`;}
-        else if(r.chi2!==undefined){html+=`<p>&chi;&sup2;(${r.df}) = ${fmt(r.chi2,3)}, p ${fmtP(r.p)} <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span>. Cram&eacute;r's V = ${fmt(r.cramersV,3)}.</p>`;}
+        } else if(r.t!==undefined){
+          html+=`<p style="font-family:'Helvetica Neue',Arial;font-size:13px;color:#6B7280;">
+            <span class="stat-inline">t(${fmt(r.df,1)}) = ${fmt(r.t,3)}</span> &nbsp;
+            <span class="stat-inline">p ${fmtP(r.p)}</span> &nbsp;
+            <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span> &nbsp;
+            95% CI [${fmt(r.ci_lo,3)}, ${fmt(r.ci_hi,3)}] &nbsp; Cohen's d = ${fmt(r.d,3)}
+          </p>`;
+        } else if(r.F!==undefined&&r.dfb!==undefined){
+          html+=`<p style="font-family:'Helvetica Neue',Arial;font-size:13px;color:#6B7280;">
+            <span class="stat-inline">F(${r.dfb},${r.dfw}) = ${fmt(r.F,3)}</span> &nbsp;
+            <span class="stat-inline">p ${fmtP(r.p)}</span> &nbsp;
+            <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span> &nbsp;
+            η² = ${fmt(r.eta2,3)} &nbsp; N = ${r.N}
+          </p>`;
+        } else if(r.r2!==undefined&&r.names){
+          html+=`<p style="font-family:'Helvetica Neue',Arial;font-size:13px;color:#6B7280;">
+            <span class="stat-inline">R² = ${fmt(r.r2,4)}</span> &nbsp;
+            <span class="stat-inline">Adj. R² = ${fmt(r.r2adj!==undefined?r.r2adj:r.r2,4)}</span> &nbsp;
+            ${r.p_f!==undefined?`<span class="stat-inline">F p ${fmtP(r.p_f)}</span>`:''}
+            RMSE = ${fmt(r.rmse,4)}
+          </p>
+          <table><thead><tr><th>Term</th><th>β</th><th>SE</th><th>${r.z_v?'z':'t'}</th><th>p</th></tr></thead><tbody>
+          ${(r.names||[]).map((nm,i)=>`<tr><td>${nm}</td><td>${fmt(r.beta[i])}</td><td>${fmt(r.se||r.se_b?.(i)?.[i]||r.se?.[i]||r.se_b?.[i])}</td><td>${fmt((r.z_v||r.t_v)?.[i],3)}</td><td><span class="${(r.p_v||[])[i]<0.05?'sig':'notsig'}">${fmtP((r.p_v||[])[i])}</span></td></tr>`).join('')}
+          </tbody></table>`;
+        } else if(r.chi2!==undefined){
+          html+=`<p style="font-family:'Helvetica Neue',Arial;font-size:13px;color:#6B7280;">
+            <span class="stat-inline">χ²(${r.df}) = ${fmt(r.chi2,3)}</span> &nbsp;
+            <span class="stat-inline">p ${fmtP(r.p)}</span> &nbsp;
+            <span class="${r.p<0.05?'sig':'notsig'}">${r.p<0.05?'significant':'n.s.'}</span> &nbsp;
+            Cramér's V = ${fmt(r.cramersV,3)}
+          </p>`;
+        } else if(r.icc!==undefined){
+          html+=`<p style="font-family:'Helvetica Neue',Arial;font-size:13px;color:#6B7280;">
+            <span class="stat-inline">ICC = ${fmt(r.icc,3)}</span> &nbsp;
+            <span class="stat-inline">σ²_u = ${fmt(r.sigma2_u,4)}</span> &nbsp;
+            ${r.aic!==undefined?`<span class="stat-inline">AIC = ${fmt(r.aic,1)}</span>`:''}
+            q = ${r.q} groups
+          </p>`;
+        }
+
         html+=`</div>`;
       });
     }
-    if(sects.methods){
-      html+=`<h2>Methods</h2><div class="note"><p><strong>Statistical Computing:</strong> All analyses were performed using StatLab Pro (v1.0), a browser-based statistical computing environment built with React and JavaScript. Statistical distributions (t, F, &chi;&sup2;, normal) are computed using exact numerical algorithms including the regularized incomplete beta and gamma functions.</p><p><strong>Significance thresholds:</strong> Results are considered statistically significant at &alpha; = .05. Confidence intervals are constructed at the 95% level unless specified. Effect sizes are reported where applicable: Cohen's d for t-tests, &eta;&sup2; for ANOVA, and R&sup2; for regression.</p><p><strong>Reproducibility:</strong> This analysis was conducted locally. No data was transmitted externally. To regenerate this report, reopen the project in StatLab Pro.</p></div>`;
+
+    // ── SYNTHESIS ─────────────────────────────────────────────────
+    if(analyses.length>0){
+      html+=`<div class="summary-box">
+        <h3>Synthesis of Findings</h3>
+        <p>Across ${totalTests} statistical procedure${totalTests!==1?'s':''} conducted in this session,
+        ${sigResults.length===0
+          ? 'no results reached conventional levels of statistical significance (α = .05). This may reflect true null effects, limited statistical power due to sample size, or the need to explore alternative hypotheses.'
+          : sigResults.length===totalTests
+            ? 'all results reached conventional levels of statistical significance (p < .05), consistently pointing toward meaningful patterns in the data.'
+            : `${sigResults.length} of ${totalTests} reached statistical significance (p < .05). The significant results warrant attention, while the non-significant findings should be interpreted cautiously rather than accepted as evidence of absence.`
+        }
+        ${analyses.some(a=>a.result.r2!==undefined)?` Regression models explained between ${(Math.min(...analyses.filter(a=>a.result.r2!==undefined).map(a=>a.result.r2))*100).toFixed(0)}% and ${(Math.max(...analyses.filter(a=>a.result.r2!==undefined).map(a=>a.result.r2))*100).toFixed(0)}% of outcome variance.`:''}
+        </p>
+        <p style="margin-bottom:0;font-size:13px;opacity:0.65;">Note: Statistical significance does not imply practical importance. Always interpret results alongside effect sizes, confidence intervals, and domain knowledge.</p>
+      </div>`;
     }
-    html+=`<footer>StatLab Pro &middot; Local-first statistical analysis &middot; All computations performed in-browser &middot; ${new Date().getFullYear()}</footer></body></html>`;
+
+    // ── METHODS ───────────────────────────────────────────────────
+    if(sects.methods){
+      html+=`<h2>Methods</h2>
+      <div class="note">
+        <p><strong>Statistical computing:</strong> All analyses were performed using StatLab Pro (v1.0), a browser-based environment using exact numerical algorithms for t, F, χ², and normal distributions (regularized incomplete beta and gamma functions). Mixed models use iterative GLS with method-of-moments REML variance component estimation. GLMMs use penalized quasi-likelihood (PQL) approximation.</p>
+        <p style="margin-top:10px"><strong>Reporting conventions:</strong> Results are reported as statistically significant at α = .05 (two-tailed). Effect sizes: Cohen's d for t-tests; η² for ANOVA; R² for regression; Cramér's V for χ²; ICC for mixed models. Confidence intervals are at the 95% level.</p>
+        <p style="margin-top:10px"><strong>Reproducibility:</strong> This analysis was conducted locally. No data was transmitted externally. All computations are deterministic and reproducible within the same session.</p>
+      </div>`;
+    }
+
+    html+=`<footer>StatLab Pro &middot; Local-first statistical analysis &middot; ${new Date().getFullYear()} &middot; All computations in-browser &middot; <em>${title}</em></footer></body></html>`;
     setGen(html);
   }
 
